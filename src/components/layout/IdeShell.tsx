@@ -6,14 +6,12 @@ import { CodeEditor } from '../../features/files/CodeEditor';
 import { WorkbenchPanel } from '../../features/workbench/WorkbenchPanel';
 import { AssistantPanel } from '../../features/assistant/AssistantPanel';
 import { useProjectStore } from '../../store/projectStore';
-import { FolderCode, Cpu, Bot, ChevronDown, ChevronRight, AlertOctagon } from 'lucide-react';
+import { FolderCode, Cpu, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 
 export const IdeShell: React.FC = () => {
   const {
     activeMobileTab,
-    setActiveMobileTab,
-    corruptNotice,
-    dismissCorruptNotice
+    setActiveMobileTab
   } = useProjectStore();
 
   // Desktop panel widths (percentages or pixels)
@@ -244,48 +242,6 @@ export const IdeShell: React.FC = () => {
 
       {/* Bottom Dock: Output, Problems, Serial */}
       <BottomPanel />
-
-      {/* Corrupt Data Recovery Modal */}
-      {corruptNotice && (
-        <div className="modal-overlay">
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#f43f5e' }}>
-                <AlertOctagon size={16} />
-                Corrupt Storage Data Detected
-              </span>
-            </div>
-            <div className="modal-content">
-              <p>
-                ProtoForge AI found corrupt or unparseable project data in your local browser storage:
-              </p>
-              <pre style={{
-                background: '#0c121d',
-                padding: '8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                color: '#f43f5e',
-                margin: '8px 0',
-                overflowX: 'auto'
-              }}>
-                {corruptNotice.error}
-              </pre>
-              <p style={{ fontSize: '12px', color: '#94a3b8' }}>
-                A timestamped backup of the raw data was safely preserved in local storage.
-                Would you like to start a fresh "Automatic Street Light" project?
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button
-                className="toolbar-btn primary"
-                onClick={dismissCorruptNotice}
-              >
-                Start Fresh Project
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

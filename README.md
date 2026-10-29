@@ -2,67 +2,118 @@
 
 > **CHAKRAVYUH Smart ENTC Learning & Innovation Platform**  
 > **Team:** BUG HUNTERS  
-> **Target Deployment:** Vercel  
+> **Target Deployment:** Vercel (Zero paid services, session-only in-memory architecture)  
 
-ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It integrates code editing, interactive circuit workbench simulation, and AI-assisted engineering guidance into a unified development environment.
+ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It combines an extensible component registry, interactive electronics canvas, undirected pin-to-pin wiring, electrical netlist validation, and educational circuit diagnostics into a unified student workspace.
 
 ---
 
-## Current Status: Phase 2 Implemented (Workbench & Component Registry)
+## Current Status: Phase 3 Implemented (Wiring & Circuit Validation)
 
 - **Phase 1 (Foundation & Monaco IDE)**: Completed & verified.
 - **Phase 2 (Component Registry & Electronics Workbench)**: Completed & verified.
-- **Phase 3 (Pin-to-Pin Wiring Net Graph & Electrical Validation)**: Queued next.
+- **Phase 3 (Pin-to-Pin Wiring, Netlist Validation & Session-Only Storage)**: **Completed & verified.**
+- **Phase 4 (Functional Automatic Street Light Simulation)**: Queued next.
 
 ---
 
-## Phase 2 Highlights
+## Phase 3 Architecture: Session-Only Projects
 
-1. **Interactive Electronics Workbench**:
-   - Built on `@xyflow/react` with custom high-fidelity component nodes.
-   - Dotted engineering grid with smooth panning, zooming, and fit-view controls.
-   - Dual placement: Drag-and-drop from the palette or click the "+ Add" button with staggered positioning.
-   - Visual terminal pins with large pointer targets and connections temporarily disabled with clear feedback (*"Component placement is active. Electrical wiring arrives in Phase 3."*).
+Per updated challenge requirements, ProtoForge operates in a **strictly session-only, in-memory model**:
 
-2. **Extensible Component Registry**:
-   - **Arduino Uno R3**: Original blue PCB illustration, ATmega328P DIP chip, digital header (D0/RX to D13, AREF, GND), and analog/power header (5V, 3V3, GND, VIN, RESET, A0–A5).
-   - **ESP32 DevKit**: Dark development-board view with ESP-WROOM-32 RF shield, exposed subset pins (3V3, GND, GPIO18–23, GPIO34 input-only), and visual-only badge.
-   - **Resistor**: Axial beige body with live value display and convenient presets (220 Ω, 1 kΩ, 10 kΩ).
-   - **LED**: Polarized 5mm dome with configurable colors (red, green, blue, yellow) and Anode (+)/Cathode (−) terminals.
-   - **Photoresistor (LDR)**: Ceramic sensor disc with CdS serpentine pattern and configurable dark/bright resistance.
-   - **14 Catalog-Only Discovery Items**: Push buttons, potentiometers, sensors (temperature, ultrasonic, soil moisture), actuators (relays, motors, servos, buzzers), and displays (LCD, OLED).
+1. **No Automatic Browser Persistence**:
+   - Project work is kept in browser memory during the active session.
+   - `localStorage`, `sessionStorage`, `IndexedDB`, cookies, and service worker caches are **never** used to retain project files, components, or wires.
+   - Legacy storage keys (`protoforge.project.*`) are automatically removed upon startup without clearing unrelated browser storage.
+   - Refreshing or closing the tab discards the current workspace.
 
-3. **Properties Inspector**:
-   - Inspects placed components, instance labels, and terminal pinouts with electrical roles.
-   - Validated property editing with inline error messages (rejects negative numbers, `NaN`, and empty labels).
-   - Independent component instances: modifying one resistor does not mutate another.
-
-4. **Keyboard & Interaction Safety**:
-   - `Delete`/`Backspace` keys only remove selected components when the canvas is focused.
-   - Keystrokes in Monaco, filename inputs, and property fields are never intercepted.
+2. **Manual Download & Import**:
+   - **Download Project (`Ctrl+S` / `Cmd+S`)**: Exports a schema-versioned JSON snapshot containing all project files, components, wires, properties, and metadata.
+   - **Import Project**: File picker that validates JSON syntax, schema version (`schemaVersion: 1`), maximum file size (5 MB), ID uniqueness, component registry definitions, property schemas, relative file paths, and wire endpoint integrity before loading.
+   - Invalid import files leave the active workspace untouched.
+   - User confirmation is required before `New` or `Import` replaces a modified workspace.
 
 ---
 
-## Walkthrough: Setting Up the Automatic Street Light Components
+## Wiring & Electrical Validation Features
 
-To prepare the workbench for the reference Automatic Street Light experiment:
-1. Open the **Component Library** palette on the left side of the workbench.
-2. Click **Add** next to **Arduino Uno R3** (or drag it onto the canvas). Notice label `U1` is assigned.
-3. Click **Add** next to **Photoresistor (LDR)**. Notice label `LDR1` is assigned.
-4. Click **Add** next to **Resistor**. Notice label `R1` (default 220 Ω) is placed.
-5. In the **Properties Inspector** for `R1`, click the **10 kΩ (Divider)** preset. It updates to 10,000 Ω.
-6. Click **Add** next to **Resistor** again. Notice label `R2` is placed and retains its default 220 Ω.
-7. Click **Add** next to **LED (Light Emitting Diode)**. Notice label `LED1` is placed.
-8. Drag the components to arrange them clearly on the dotted workbench grid.
-9. Click **Save** in the top bar (or press `Ctrl+S`). Refresh the browser to verify that all components, positions, and properties are preserved.
+### 1. Pin-to-Pin Canvas Wiring
+- **Undirected Electrical Connections**: Wires represent physical conductors (`A ↔ B`). Dragging from A to B or from B to A creates the identical electrical connection.
+- **Dual Stacked Handles**: Every component terminal has bidirectional source/target handles (`isConnectable={true}`) for effortless drag-and-drop wiring.
+- **Wire Inspector**: Click any wire on the canvas to inspect its endpoints (e.g. `U1 [5V] ↔ LDR1 [Terminal 1]`), change its color (Cyan, Red, Slate/Black, Yellow, Green, Purple, White), or delete it.
+- **Keyboard & Touch Connection Tool**: Accessible dropdown form allowing students to connect Component A/Pin A to Component B/Pin B without mouse dragging, plus a list of active connections.
+- **Lifecycle Safety**:
+  - Moving a component preserves all electrical wire connections and positions.
+  - Deleting a component automatically purges all connected wires.
+  - Self-loops, duplicate wires, and missing endpoints are rejected with immediate feedback.
+
+### 2. Electrical Netlist & Validation Engine
+- **Union-Find Graph Traversal**: Merges connected terminals into discrete electrical nets.
+- **Microcontroller Ground Plane**: Ground pins on the same board (`pin-gnd-1`, `pin-gnd-2`, `pin-gnd-3`) share the board's internal ground plane.
+- **Discrete Component Separation**: Passives (resistors, LEDs, LDRs) remain strictly separated as elements between nets.
+- **Static Check Rules**:
+  - Direct 5V-to-GND and 3.3V-to-GND short circuit detection (`SHORT_CIRCUIT_POWER_GND`).
+  - Conflicting fixed-voltage supply rails (`CONFLICTING_POWER_RAILS`).
+  - Duplicate/redundant wire detection.
+  - Invalid component property detection.
+- **Responsible Validation Limits**: When all static checks pass, the IDE reports:  
+  *"No errors found by the implemented checks."* with an explicit disclaimer that static rule checking does not constitute a full electrical safety analysis.
+
+### 3. Automatic Street Light Reference Topology Checker
+Validates the complete reference topology for the Automatic Street Light project:
+- **Reference Components**: 1× Arduino Uno R3, 1× Photoresistor (LDR), 1× 10 kΩ divider pull-down resistor, 1× 220 Ω LED series resistor, 1× White LED.
+- **Expected Connections**:
+  1. `Uno 5V` → `LDR Terminal 1`
+  2. `LDR Terminal 2` → `Uno A0`
+  3. `A0 Node` → `10 kΩ Resistor Terminal 1`
+  4. `10 kΩ Resistor Terminal 2` → `Uno GND`
+  5. `Uno Pin D9` → `220 Ω Resistor Terminal 1`
+  6. `220 Ω Resistor Terminal 2` → `LED Anode (A / +)`
+  7. `LED Cathode (K / -)` → `Uno GND`
+- **Tolerant & Robust**:
+  - Non-polarised passive terminals: Accepts swapped terminal orders on resistors and LDRs.
+  - Components identified by electrical connectivity and type, not hardcoded label strings.
+  - Fault detection: detects missing power, missing A0 tap, disconnected divider, disconnected LED series resistor, bypassed series resistor, reversed LED polarity, missing ground, and multiple candidate boards.
+
+---
+
+## Step-by-Step Walkthrough: Wiring the Street Light Circuit
+
+### Option A: Using the Automated Preset
+1. In the workbench floating toolbar, click **Layout**.
+2. Click **Load Unwired Layout** (or **Load Wired Example** to inspect the verified reference circuit).
+3. Click **Validate Circuit** in the top toolbar to view live diagnostics in the **Problems** tab.
+
+### Option B: Manual Wiring from Scratch
+1. Place **Arduino Uno R3**, **Photoresistor (LDR)**, two **Resistors**, and one **LED** from the Component Library.
+2. In the Properties Inspector, configure one resistor to **10 kΩ** (`R1`) and the other to **220 Ω** (`R2`).
+3. Drag a wire from **Uno 5V** to **LDR Terminal 1** (Red wire).
+4. Drag a wire from **LDR Terminal 2** to **Uno A0** (Cyan wire).
+5. Drag a wire from **LDR Terminal 2** (or Uno A0) to **R1 Terminal 1** (Cyan wire).
+6. Drag a wire from **R1 Terminal 2** to **Uno GND** (Slate/Black wire).
+7. Drag a wire from **Uno D9** to **R2 Terminal 1** (Yellow wire).
+8. Drag a wire from **R2 Terminal 2** to **LED Anode (A / +)** (Yellow wire).
+9. Drag a wire from **LED Cathode (K / -)** to **Uno GND** (Slate/Black wire).
+10. Click **Validate Circuit** in the top toolbar:
+    - If properly wired, the Problems panel displays: *"No errors found by the implemented checks."*
+    - Click **Download** (or press `Ctrl+S`) to save your circuit snapshot to your computer.
+
+---
+
+## Phase Boundaries & Non-Goals
+
+- **Simulation Engine**: Run, Stop, and Reset buttons are disabled with *"Functional simulation arrives in Phase 4."* Functional light level simulation, analog sensor math, and LED illumination will be delivered in Phase 4.
+- **Serial Monitor**: Displays *"No firmware runtime connected."* Firmware emulation arrives in later phases.
+- **AI Assistant**: Gemini integration arrives in Phase 6.
+- **Deployment**: Targeted for free Vercel hosting with zero paid services or database infrastructure.
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- **Node.js**: `>= 18.0.0` (Verified on `v20.20.2`)
-- **npm**: `>= 9.0.0` (Verified on `10.8.2`)
+- **Node.js**: `>= 18.0.0`
+- **npm**: `>= 9.0.0`
 
 ### Installation
 ```bash
@@ -79,59 +130,10 @@ Open **`http://localhost:5173`** in your browser.
 ```bash
 npm test
 ```
+Executes all 37 unit tests across schema validation, component registry, project store, wiring netlist, and street-light topology checks.
 
 ### Production Build
 ```bash
 npm run build
 ```
-
----
-
-## Project Structure
-
-```
-├── docs/
-│   └── status.md                   # Project status and scope matrix
-├── src/
-│   ├── components/layout/
-│   │   ├── IdeShell.tsx            # 3-panel split layout with resizers
-│   │   ├── TopToolbar.tsx          # Branding, actions, and status
-│   │   └── BottomPanel.tsx         # Output, Problems, Serial tabs
-│   ├── domain/
-│   │   ├── components/
-│   │   │   ├── types.ts            # Component definitions & categories
-│   │   │   ├── schemas.ts          # Zod property validation schemas
-│   │   │   ├── registry.ts         # Registry of placeable and catalog items
-│   │   │   └── registry.test.ts    # Unit tests for components & schemas
-│   │   └── project/
-│   │       ├── schema.ts           # Authoritative project schema
-│   │       ├── schema.test.ts      # Path sanitization & schema tests
-│   │       └── initialProject.ts   # Street light starter project
-│   ├── features/
-│   │   ├── files/
-│   │   │   ├── FileExplorer.tsx    # Project explorer & file operations
-│   │   │   └── CodeEditor.tsx      # Monaco editor & tab manager
-│   │   ├── workbench/
-│   │   │   ├── WorkbenchPanel.tsx  # React Flow interactive canvas
-│   │   │   ├── ComponentPalette.tsx# Searchable component library
-│   │   │   ├── ComponentNode.tsx   # Custom SVG/CSS component nodes
-│   │   │   ├── PropertiesInspector.tsx # Validated properties drawer
-│   │   │   └── WorkbenchToolbar.tsx# Pan/zoom controls & component counter
-│   │   └── assistant/
-│   │       └── AssistantPanel.tsx  # Gemini assistant placeholder
-│   ├── lib/
-│   │   ├── monaco.ts               # Monaco bundled workers & theme
-│   │   └── persistence.ts          # LocalStorage persistence manager
-│   ├── store/
-│   │   ├── projectStore.ts         # Authoritative Zustand state store
-│   │   └── projectStore.test.ts    # Store integration tests
-│   ├── styles/
-│   │   ├── theme.css               # Color tokens & dark navy palette
-│   │   └── index.css               # IDE layout & component styles
-│   ├── App.tsx                     # App root
-│   ├── main.tsx                    # React DOM entry
-│   └── vite-env.d.ts               # Vite worker types
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
+Executes TypeScript type checking (`tsc`) and compiles the production bundle into `dist/`.

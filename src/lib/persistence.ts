@@ -1,143 +1,192 @@
-import { Project, ProjectSchema } from '../domain/project/schema';
+import { Project, ProjectSchema, validateFilePath } from '../domain/project/schema';
+import { getComponentDefinition } from '../domain/components/registry';
 
-export const STORAGE_KEY_V1 = 'protoforge.project.v1';
-export const STORAGE_BACKUP_PREFIX = 'protoforge.project.corrupt.';
+export const LEGACY_STORAGE_PREFIX = 'protoforge.project.';
+export const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export interface SaveResult {
-  success: boolean;
+/**
+ * Remove legacy ProtoForge project storage records without clearing unrelated browser storage.
+ * ProtoForge operates strictly in-memory per session-only requirements.
+ */
+export function cleanupLegacyStorage(): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(LEGACY_STORAGE_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage restriction errors
+  }
+}
+
+export interface ImportValidationResult {
+  valid: boolean;
+  project?: Project;
   error?: string;
 }
 
-export type LoadResult =
-  | { status: 'found'; project: Project }
-  | { status: 'empty' }
-  | { status: 'corrupt'; rawData: string; error: string };
-
 /**
- * Check whether localStorage is available.
+ * Validate imported project JSON completely before replacing workspace.
  */
-export function isStorageAvailable(): boolean {
+export function validateProjectImport(jsonString: string): ImportValidationResult {
+  if (!jsonString || typeof jsonString !== 'string') {
+    return { valid: false, error: 'Empty or invalid import payload.' };
+  }
+
+  if (new Blob([jsonString]).size > MAX_IMPORT_SIZE_BYTES) {
+    return { valid: false, error: 'Project file exceeds maximum allowed size (5 MB).' };
+  }
+
+  let parsed: unknown;
   try {
-    const testKey = '__protoforge_storage_test__';
-    localStorage.setItem(testKey, '1');
-    localStorage.removeItem(testKey);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Persists project state to local storage with schema validation.
- */
-export function saveProjectToStorage(project: Project): SaveResult {
-  if (!isStorageAvailable()) {
-    return {
-      success: false,
-      error: 'Local browser storage is unavailable or restricted in this environment.'
-    };
-  }
-
-  // Validate before writing
-  const parseResult = ProjectSchema.safeParse(project);
-  if (!parseResult.success) {
-    const issueMsg = parseResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
-    return {
-      success: false,
-      error: `Project validation failed: ${issueMsg}`
-    };
-  }
-
-  try {
-    const serialized = JSON.stringify(parseResult.data);
-    localStorage.setItem(STORAGE_KEY_V1, serialized);
-    return { success: true };
+    parsed = JSON.parse(jsonString);
   } catch (err: unknown) {
-    if (err instanceof DOMException && (err.name === 'QuotaExceededError' || err.code === 22)) {
+    return {
+      valid: false,
+      error: `JSON parse error: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+
+  // 1. Validate top-level Project schema with Zod
+  const schemaResult = ProjectSchema.safeParse(parsed);
+  if (!schemaResult.success) {
+    const issueSummary = schemaResult.error.issues
+      .map(i => `${i.path.join('.')}: ${i.message}`)
+      .join('; ');
+    return {
+      valid: false,
+      error: `Schema validation failed: ${issueSummary}`
+    };
+  }
+
+  const project = schemaResult.data;
+
+  // 2. Validate Project Files & Paths
+  const existingPaths: string[] = [];
+  for (const file of project.files) {
+    const pathCheck = validateFilePath(file.path, existingPaths);
+    if (!pathCheck.valid) {
       return {
-        success: false,
-        error: 'Browser storage quota exceeded. Please free storage space or remove large assets.'
+        valid: false,
+        error: `Invalid project file path "${file.path}": ${pathCheck.error}`
       };
     }
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      success: false,
-      error: `Failed to write to local storage: ${message}`
-    };
+    existingPaths.push(file.path);
   }
+
+  // 3. Validate Components: Known types & unique IDs
+  const componentIdSet = new Set<string>();
+  const componentMap = new Map<string, { type: string; id: string }>();
+
+  for (const comp of project.circuit.components) {
+    if (componentIdSet.has(comp.id)) {
+      return { valid: false, error: `Duplicate component ID detected: "${comp.id}".` };
+    }
+    componentIdSet.add(comp.id);
+    componentMap.set(comp.id, { type: comp.type, id: comp.id });
+
+    const def = getComponentDefinition(comp.type);
+    if (!def) {
+      return {
+        valid: false,
+        error: `Unknown component type: "${comp.type}" for component "${comp.label}".`
+      };
+    }
+
+    // Validate component properties
+    const propCheck = def.propertySchema.safeParse(comp.properties);
+    if (!propCheck.success) {
+      return {
+        valid: false,
+        error: `Invalid properties for component ${comp.label} (${comp.type}): ${propCheck.error.message}`
+      };
+    }
+  }
+
+  // 4. Validate Wires: Unique IDs and valid endpoints
+  const wireIdSet = new Set<string>();
+  for (const wire of project.circuit.wires) {
+    if (wireIdSet.has(wire.id)) {
+      return { valid: false, error: `Duplicate wire ID detected: "${wire.id}".` };
+    }
+    wireIdSet.add(wire.id);
+
+    // Verify endpoint A
+    const compA = componentMap.get(wire.endpointA.componentId);
+    if (!compA) {
+      return {
+        valid: false,
+        error: `Wire "${wire.id}" references non-existent component "${wire.endpointA.componentId}".`
+      };
+    }
+    const defA = getComponentDefinition(compA.type);
+    if (!defA || !defA.pins.some(p => p.id === wire.endpointA.pinId)) {
+      return {
+        valid: false,
+        error: `Wire "${wire.id}" references invalid pin "${wire.endpointA.pinId}" on component ${wire.endpointA.componentId}.`
+      };
+    }
+
+    // Verify endpoint B
+    const compB = componentMap.get(wire.endpointB.componentId);
+    if (!compB) {
+      return {
+        valid: false,
+        error: `Wire "${wire.id}" references non-existent component "${wire.endpointB.componentId}".`
+      };
+    }
+    const defB = getComponentDefinition(compB.type);
+    if (!defB || !defB.pins.some(p => p.id === wire.endpointB.pinId)) {
+      return {
+        valid: false,
+        error: `Wire "${wire.id}" references invalid pin "${wire.endpointB.pinId}" on component ${wire.endpointB.componentId}.`
+      };
+    }
+
+    // Prevent self-pin connection
+    if (wire.endpointA.componentId === wire.endpointB.componentId && wire.endpointA.pinId === wire.endpointB.pinId) {
+      return {
+        valid: false,
+        error: `Wire "${wire.id}" attempts to connect pin "${wire.endpointA.pinId}" to itself.`
+      };
+    }
+  }
+
+  return { valid: true, project };
 }
 
 /**
- * Loads project state from local storage.
- * If corrupt, preserves raw data into a timestamped key and alerts caller.
+ * Serializes project to JSON string.
  */
-export function loadProjectFromStorage(): LoadResult {
-  if (!isStorageAvailable()) {
-    return { status: 'empty' };
-  }
-
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY_V1);
-  } catch (err) {
-    return {
-      status: 'corrupt',
-      rawData: '',
-      error: `Error reading local storage: ${err instanceof Error ? err.message : String(err)}`
-    };
-  }
-
-  if (!raw) {
-    return { status: 'empty' };
-  }
-
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(raw);
-  } catch (parseErr) {
-    // Preserve corrupt data before caller replaces it
-    const backupKey = `${STORAGE_BACKUP_PREFIX}${Date.now()}`;
-    try {
-      localStorage.setItem(backupKey, raw);
-    } catch {
-      // Ignore backup failure
-    }
-    return {
-      status: 'corrupt',
-      rawData: raw,
-      error: `JSON Syntax error: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
-    };
-  }
-
-  const result = ProjectSchema.safeParse(parsedJson);
-  if (!result.success) {
-    const backupKey = `${STORAGE_BACKUP_PREFIX}${Date.now()}`;
-    try {
-      localStorage.setItem(backupKey, raw);
-    } catch {
-      // Ignore backup failure
-    }
-    const issueMsg = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
-    return {
-      status: 'corrupt',
-      rawData: raw,
-      error: `Schema validation error: ${issueMsg}`
-    };
-  }
-
-  return {
-    status: 'found',
-    project: result.data
-  };
+export function serializeProject(project: Project): string {
+  return JSON.stringify(project, null, 2);
 }
 
 /**
- * Safely removes project storage key.
+ * Downloads a schema-versioned JSON snapshot of the active project.
  */
-export function clearProjectStorage(): void {
+export function downloadProjectJson(project: Project): void {
   try {
-    localStorage.removeItem(STORAGE_KEY_V1);
-  } catch {
-    // Ignore error
+    const filename = `${project.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}-rev${project.revision}.json`;
+    const serialized = serializeProject(project);
+    const blob = new Blob([serialized], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  } catch (err: unknown) {
+    console.error('Failed to trigger project download:', err);
   }
 }

@@ -6,7 +6,7 @@ export const ResistorPropertiesSchema = z.object({
 });
 export type ResistorProperties = z.infer<typeof ResistorPropertiesSchema>;
 
-export const LedColorSchema = z.enum(['red', 'green', 'blue', 'yellow']);
+export const LedColorSchema = z.enum(['red', 'green', 'blue', 'yellow', 'white']);
 export type LedColor = z.infer<typeof LedColorSchema>;
 
 export const LedPropertiesSchema = z.object({

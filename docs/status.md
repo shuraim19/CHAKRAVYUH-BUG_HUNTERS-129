@@ -2,7 +2,7 @@
 
 **Team:** BUG HUNTERS  
 **Challenge:** CHAKRAVYUH Smart ENTC Learning & Innovation Platform  
-**Target Deployment:** Vercel  
+**Target Deployment:** Vercel (Zero paid services, in-memory session architecture)  
 
 ---
 
@@ -10,72 +10,130 @@
 
 | Phase | Milestone | Priority | Status |
 |---|---|---|---|
-| **Phase 1** | Foundation & IDE Interface (Explorer, Monaco Editor, Local Saving) | P0 | **Implemented & Verified** |
+| **Phase 1** | Foundation & IDE Interface (Explorer, Monaco Editor, Project Structure) | P0 | **Implemented & Verified** |
 | **Phase 2** | Component Registry & Interactive Electronics Workbench | P0 | **Implemented & Verified** |
-| **Phase 3** | Pin-to-Pin Wiring Net Graph & Electrical Validation Engine | P0 | Queued (Next) |
+| **Phase 3** | Pin Wiring, Circuit Netlist, Validation & Session-Only Storage | P0 | **Implemented & Verified** |
 | **Phase 4** | Functional Automatic Street Light Experiment Simulation | P0 | Deferred to Phase 4 |
-| **Phase 5** | Reliable Multi-Project Persistence & Export (JSON/ZIP) | P0 | Deferred to Phase 5 |
-| **Phase 6** | Gemini Engineering Assistant & Reviewed Project Proposals | P1 | Deferred to Phase 6 |
+| **Phase 5** | Hardened Project File Export/Import Consistency & Packaging | P0 | Deferred to Phase 5 |
+| **Phase 6** | Gemini Engineering Assistant & Reviewed Proposals | P1 | Deferred to Phase 6 |
 | **Phase 7** | End-to-End Testing, Polish, Documentation & Vercel Deployment | P1 | Deferred to Phase 7 |
 
 ---
 
-## Phase 2 Deliverables (Component Registry & Workbench)
+## Phase 3 Deliverables (Wiring, Circuit Validation & Session-Only Projects)
 
 ### Implemented
-- [x] **Component Registry (`src/domain/components/registry.ts`)**:
-  - Registered 5 placeable visual components: Arduino Uno R3, ESP32 DevKit, Resistor, LED, and Photoresistor (LDR).
-  - Registered 14 extensible catalog-only components: Push button, Potentiometer, Ceramic capacitor, Temperature sensor, Ultrasonic sensor, Soil moisture sensor, Piezo buzzer, Relay module, DC motor, Servo, LCD 16x2, OLED SSD1306, Breadboard, and DC power supply.
-  - Distinct separation of `isPlaceable` from functional simulation support.
-- [x] **Component Palette (`src/features/workbench/ComponentPalette.tsx`)**:
-  - Collapsible drawer within centre workbench region.
-  - Real-time search across names, categories, descriptions, and keywords.
-  - Category filtering (`Boards`, `Passive components`, `Sensors`, `Outputs`, `Displays`, `Power and interconnects`).
-  - Empty search state with clear filter reset.
-  - Dual placement: Drag-and-drop onto the infinite canvas and click-to-place "+ Add" button with staggered centering.
-  - Disabled Add controls for catalog-only entries with clear educational tooltip.
-- [x] **Interactive Workbench Canvas (`@xyflow/react`)**:
-  - High-fidelity custom node visual components (`src/features/workbench/ComponentNode.tsx`):
-    - **Arduino Uno**: Recognisable blue PCB, ATmega328P DIP chip, labeled digital header (D0/RX to D13/LED, AREF, GND) and power/analog header (5V, 3V3, GND, VIN, RESET, A0–A5).
-    - **ESP32 DevKit**: Dark matte PCB with ESP-WROOM-32 RF shield, exposed documented subset pins (3V3, GND, GPIO18, 19, 21, 22, 23, 34 Input-only) and "Visual Only" badge.
-    - **Resistor**: Axial beige resistor body with color bands and live displayed resistance value.
-    - **LED**: 5mm LED dome illustration with configurable colors (red, green, blue, yellow) and polarized leads (Anode A/+ and Cathode K/-).
-    - **LDR**: Ceramic disc with serpentine CdS track pattern, showing dark/bright resistance parameters.
-  - Dotted engineering grid background.
-  - Canvas pan, zoom in/out, fit-view controls, and live component counter.
-  - Pin terminals rendered with wide pointer hit areas and connections safely disabled (`isConnectable={false}`) with clear notice: *"Component placement is active. Electrical wiring arrives in Phase 3."*
-- [x] **Properties Inspector (`src/features/workbench/PropertiesInspector.tsx`)**:
-  - Collapsible inspector drawer showing active component name, status, and pinout list with roles.
-  - Validated property editing:
-    - **Resistor**: Live numerical resistance editing + unit selector, with instant presets (220 Ω, 1 kΩ, 10 kΩ).
-    - **LED**: Color picker (red, green, blue, yellow) and label editor.
-    - **LDR**: Configurable dark and bright resistance values with strict inequality validation (`dark > bright > 0`).
-    - **Arduino / ESP32**: Informational board specifications (clock frequency, operating voltage) protected from arbitrary alteration.
-  - Safe error display: Rejects `NaN`, negative, empty, or duplicate labels without corrupting state.
-- [x] **Authoritative State & Storage Synchronisation**:
-  - Component instances managed in Zustand store with unique stable IDs and independent default properties.
-  - Moving, placing, editing properties, or deleting components marks project unsaved. Selection changes do not mark dirty.
-  - Automatically regenerates `circuit.json` and `components.json` to match the canonical workbench.
-  - Safe keyboard delete: Delete/Backspace keys only remove components when canvas has focus (never deletes while typing in Monaco, filename inputs, or property fields).
-  - LocalStorage persistence saves all placed components, labels, coordinates, and properties.
 
-### Verified
-- [x] Vitest test suite (`src/domain/components/registry.test.ts` & `src/store/projectStore.test.ts`): 22/22 tests passing.
-  - Placeables vs catalog-only integrity.
-  - Independent label generation (`R1`, `R2`, `LED1`, `U1`).
-  - Strict validation of resistor values (positive finite, rejects NaN/negatives).
-  - Strict validation of LDR inequality constraints.
-  - Component placement, independent instance mutation, deletion, and duplicate label prevention.
-- [x] TypeScript compilation: zero errors (`tsc --noEmit`).
-- [x] Production build: Vite bundle generated in `dist/`.
-- [x] Dev server active at `http://localhost:5173/`.
+1. **Session-Only Project Storage Architecture**:
+   - **Zero Automatic Browser Persistence**: Eliminated automatic project saving to `localStorage`, `sessionStorage`, `IndexedDB`, cookies, or service worker caches.
+   - **Legacy Cleanup (`src/lib/persistence.ts`)**: Specifically cleans up any legacy `protoforge.project.*` keys on initialization without clearing unrelated browser storage.
+   - **Clear User Notice**: Persistent visible warning in the top toolbar:  
+     *"Temporary workspace. Download your project to keep it. Refreshing or closing this page discards current work."*
+   - **Explicit Manual Download**: Replaced browser save with **"Download Project"** (hotkey `Ctrl+S` / `Cmd+S`) creating a versioned JSON snapshot file.
+   - **Strict Project Import**: File picker with comprehensive pre-import validation:
+     - JSON syntax & schema version checking (`schemaVersion: 1`).
+     - Bounded payload size (`<= 5 MB`).
+     - Unique component and wire IDs.
+     - Known component types and pin integrity.
+     - Component property schema validation.
+     - Safe relative file paths.
+     - Invalid imports leave the active workspace untouched.
+   - **Confirmation Dialogs**: Prompts student confirmation before `New` or `Import` discards current work.
 
-### Unverified (Pending Browser Subagent / Manual Run)
-- [ ] End-to-end touch gestures on physical mobile devices.
+2. **Pin-Based Wiring Data Model & Canvas Interactions (`@xyflow/react`)**:
+   - **Canonical Wire Model (`src/domain/project/schema.ts`)**: Each wire has `id`, `endpointA: { componentId, pinId }`, `endpointB: { componentId, pinId }`, and visual `colour`.
+   - **Undirected Electrical Connections**: Connections are undirected (`A <-> B` is electrically identical to `B <-> A`). Dragging or creating in either direction produces equivalent canonical connectivity.
+   - **Dual Stacked Handles (`src/features/workbench/ComponentNode.tsx`)**: Bidirectional source and target handles (`isConnectable={true}`) on all terminal pins allow drag-and-drop wiring in either direction.
+   - **Visual Customization & Inspector (`src/features/workbench/WireInspector.tsx`)**: Selected wire inspector displaying endpoint labels (e.g. `U1 [5V] <-> LDR1 [Terminal 1]`), 7 electrical color swatches, and wire deletion.
+   - **Accessible Alternative (`src/features/workbench/ConnectionList.tsx`)**: Keyboard- and touch-friendly dropdown form to connect Component A/Pin A to Component B/Pin B, plus active connection listing and wire deletion.
+   - **Lifecycle Integrity**:
+     - Moving a component preserves all electrical wire connections and coordinates.
+     - Deleting a component automatically purges all connected wires.
+     - Duplicate endpoint pairs and self-loops are rejected with clear error feedback.
 
-### Deferred (Explicit Non-Goals for Phase 2)
-- Pin-to-pin wiring net graph (Phase 3).
-- Street light sensor simulation & analog divider math (Phase 4).
-- ZIP export and multi-project manager (Phase 5).
-- Gemini API backend and proposal review UI (Phase 6).
-- Arbitrary C++ firmware emulation / SPICE physics engine (P2 Out of Scope).
+3. **Netlist & General Electrical Validation Engine (`src/domain/circuit/`)**:
+   - **Union-Find Graph Traversal (`src/domain/circuit/netlist.ts`)**: Merges connected terminals into discrete electrical nets. Microcontroller board ground pins (`pin-gnd-1`, `pin-gnd-2`, `pin-gnd-3`) share the internal board ground plane. Passive terminals (resistors, LEDs, LDRs) remain strictly separated as elements between nets.
+   - **Static Rules Engine (`src/domain/circuit/validate.ts`)**:
+     - Direct 5V-to-GND and 3.3V-to-GND short circuit detection (`SHORT_CIRCUIT_POWER_GND`).
+     - Conflicting fixed-voltage supply rails (`CONFLICTING_POWER_RAILS`).
+     - Orphan wire references and invalid pins.
+     - Redundant duplicate wires.
+     - Invalid component properties.
+   - **Honest Diagnostics**: Returns clear, structured diagnostics with codes, severity, and related component/wire IDs.
+   - **Responsible Safety Labeling**: Displays *"No errors found by the implemented checks."* with explicit disclaimer that static checks do not constitute a full electrical safety analysis.
+
+4. **Automatic Street Light Topology Checker (`src/domain/circuit/streetLightTopology.ts`)**:
+   - Validates the 7 reference connections:
+     1. Uno 5V → LDR terminal 1
+     2. LDR terminal 2 → Uno A0
+     3. A0 node → 10 kΩ pull-down resistor terminal 1
+     4. 10 kΩ resistor terminal 2 → Uno GND
+     5. Uno D9 → 220 Ω series resistor terminal 1
+     6. 220 Ω resistor terminal 2 → LED anode (A/+)
+     7. LED cathode (K/-) → Uno GND
+   - Non-polarised passive terminal invariance: Accepts swapped terminal order on resistors and LDRs.
+   - Component identification by connectivity and electrical type, not hardcoded label strings.
+   - Fault detection:
+     - Missing 5V supply (`LDR_MISSING_POWER`).
+     - Missing A0 sensor tap (`LDR_MISSING_A0`).
+     - Missing divider resistor or ground (`DIVIDER_RESISTOR_DISCONNECTED`).
+     - Missing LED series resistor (`LED_SERIES_RESISTOR_DISCONNECTED`).
+     - Bypassed series resistor (`LED_BYPASSED_SERIES_RESISTOR`).
+     - Reversed LED polarity (`LED_REVERSED_POLARITY`).
+     - Missing LED ground return (`LED_CATHODE_DISCONNECTED`).
+     - Multiple candidate boards/sensors (`TOPOLOGY_AMBIGUOUS_BOARDS`).
+
+5. **Ready-to-Wire Layouts & Educational Wiring Guide**:
+   - **Unwired Street Light Layout**: Places neatly arranged, unwired Uno, LDR, 10 kΩ resistor, 220 Ω resistor, and LED.
+   - **Wired Reference Circuit**: Loads verified reference circuit for testing and validation.
+   - **Interactive Wiring Guide (`WiringGuideModal.tsx`)**: Step-by-step breakdown of all 7 required connections.
+
+6. **UI Controls & Phase Boundaries**:
+   - Top Toolbar **Validate Circuit** button activated with instant problem count and bottom dock navigation.
+   - **Run / Stop / Reset** buttons cleanly disabled with tooltip: *"Functional simulation arrives in Phase 4."*
+   - Bottom Dock **Problems** tab with interactive diagnostic tags (clicking selects the component/wire on the canvas).
+   - Bottom Dock **Serial** monitor states: *"No firmware runtime connected."*
+
+---
+
+## Test & Verification Results
+
+### Unit Test Suite (`npm test` via Vitest)
+- **Total Test Files**: 4 passed (4 total)
+- **Total Tests**: **37 passed (37 total)**
+- **Coverage**:
+  1. Undirected duplicate-wire detection.
+  2. Multiple connections sharing one ground pin.
+  3. A0 branching to divider resistor.
+  4. Resistor terminals remaining separate nets.
+  5. Correct street-light reference topology passing with zero errors.
+  6. Each of the 7 connections removed independently causing the expected diagnostic.
+  7. Reversed LED polarity detection.
+  8. Bypassed series resistor detection.
+  9. Supply-to-ground short circuit detection across intermediate wires.
+  10. Renamed component validation invariance.
+  11. Passive terminal ordering invariance.
+  12. Component deletion wire cleanup.
+  13. Component translation preserving electrical endpoints.
+  14. Invalid import rejection without workspace mutation.
+  15. Full JSON export/import round-trip preserving files, properties, and connectivity.
+
+### Production Build (`npm run build`)
+- TypeScript type-checking (`tsc`): Zero errors.
+- Vite production bundle generated successfully in `dist/`.
+
+### Verified Locally via HTTP
+- Local server responding `HTTP/1.1 200 OK` at `http://localhost:5173/`.
+
+### Unverified
+- End-to-end multi-finger touch wiring on physical mobile devices (Playwright browser binaries unavailable due to sandbox network policy).
+
+---
+
+## Phase Boundaries & Next Steps
+
+### Explicit Non-Goals for Phase 3
+- Functional simulation execution, light level sliders, and LED illumination (Phase 4).
+- C++ firmware execution / Arduino AVR emulation (Phase 4).
+- Gemini API integration or AI prompt generation (Phase 6).
+- Paid hosting infrastructure (Target is free Vercel hosting).

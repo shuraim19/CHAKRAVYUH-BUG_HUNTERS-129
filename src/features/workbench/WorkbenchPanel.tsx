@@ -5,7 +5,9 @@ import {
   BackgroundVariant,
   ReactFlowProvider,
   useReactFlow,
-  Node
+  Node,
+  Edge,
+  Connection
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -14,7 +16,8 @@ import { ComponentNode } from './ComponentNode';
 import { ComponentPalette } from './ComponentPalette';
 import { PropertiesInspector } from './PropertiesInspector';
 import { WorkbenchToolbar } from './WorkbenchToolbar';
-import { Cpu, AlertCircle } from 'lucide-react';
+import { WireInspector } from './WireInspector';
+import { Cpu, Cable } from 'lucide-react';
 
 const nodeTypes = {
   component: ComponentNode
@@ -27,12 +30,17 @@ const WorkbenchCanvas: React.FC = () => {
   const {
     project,
     selectedComponentId,
+    selectedWireId,
     selectComponent,
+    selectWire,
     addComponent,
     updateComponentPosition,
     deleteComponent,
+    addWire,
+    deleteWire,
     isPaletteOpen,
-    setPaletteOpen
+    setPaletteOpen,
+    addLog
   } = useProjectStore();
 
   // Convert authoritative store components to React Flow Nodes
@@ -51,6 +59,23 @@ const WorkbenchCanvas: React.FC = () => {
     }));
   }, [project.circuit.components, selectedComponentId]);
 
+  // Convert authoritative store wires to React Flow Edges
+  const edges: Edge[] = useMemo(() => {
+    return project.circuit.wires.map(wire => ({
+      id: wire.id,
+      source: wire.endpointA.componentId,
+      sourceHandle: wire.endpointA.pinId,
+      target: wire.endpointB.componentId,
+      targetHandle: `${wire.endpointB.pinId}__tgt`,
+      selected: wire.id === selectedWireId,
+      style: {
+        stroke: wire.colour,
+        strokeWidth: wire.id === selectedWireId ? 3.5 : 2.5
+      },
+      animated: false
+    }));
+  }, [project.circuit.wires, selectedWireId]);
+
   // Handle node drag stop and commit to authoritative store
   const onNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
@@ -62,15 +87,49 @@ const WorkbenchCanvas: React.FC = () => {
   // Handle node click / selection
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      selectWire(null);
       selectComponent(node.id);
     },
-    [selectComponent]
+    [selectComponent, selectWire]
+  );
+
+  // Handle edge click / selection
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      selectComponent(null);
+      selectWire(edge.id);
+    },
+    [selectComponent, selectWire]
   );
 
   // Deselect when clicking empty space
   const onPaneClick = useCallback(() => {
     selectComponent(null);
-  }, [selectComponent]);
+    selectWire(null);
+  }, [selectComponent, selectWire]);
+
+  // Handle handle-to-handle connection
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) {
+        return;
+      }
+
+      // Strip potential __tgt handle suffix to identify canonical pin ID
+      const pinA = connection.sourceHandle.replace(/__tgt$/, '');
+      const pinB = connection.targetHandle.replace(/__tgt$/, '');
+
+      const res = addWire(
+        { componentId: connection.source, pinId: pinA },
+        { componentId: connection.target, pinId: pinB }
+      );
+
+      if (!res.success && res.error) {
+        addLog('warn', `Connection rejected: ${res.error}`);
+      }
+    },
+    [addWire, addLog]
+  );
 
   // Handle Drag Over
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -99,7 +158,6 @@ const WorkbenchCanvas: React.FC = () => {
   const handleAddFromPalette = useCallback(
     (type: string) => {
       const viewport = getViewport();
-      // Place near visible canvas centre
       const width = reactFlowWrapper.current?.clientWidth || 600;
       const height = reactFlowWrapper.current?.clientHeight || 400;
 
@@ -115,19 +173,29 @@ const WorkbenchCanvas: React.FC = () => {
     [getViewport, addComponent, project.circuit.components.length]
   );
 
-  // Safe Keyboard Delete handler: only delete if focus is NOT inside an editor or input
+  // Safe Keyboard shortcuts: Delete wire or component, Escape to deselect
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        const active = document.activeElement;
-        const tagName = active?.tagName.toLowerCase();
-        const isEditingText =
-          tagName === 'input' ||
-          tagName === 'textarea' ||
-          active?.closest('.monaco-editor') ||
-          active?.getAttribute('contenteditable') === 'true';
+      const active = document.activeElement;
+      const tagName = active?.tagName.toLowerCase();
+      const isEditingText =
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
+        active?.closest('.monaco-editor') ||
+        active?.getAttribute('contenteditable') === 'true';
 
-        if (!isEditingText && selectedComponentId) {
+      if (e.key === 'Escape') {
+        selectComponent(null);
+        selectWire(null);
+        return;
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditingText) {
+        if (selectedWireId) {
+          e.preventDefault();
+          deleteWire(selectedWireId);
+        } else if (selectedComponentId) {
           e.preventDefault();
           deleteComponent(selectedComponentId);
         }
@@ -136,7 +204,7 @@ const WorkbenchCanvas: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentId, deleteComponent]);
+  }, [selectedComponentId, selectedWireId, deleteComponent, deleteWire, selectComponent, selectWire]);
 
   return (
     <div
@@ -158,19 +226,24 @@ const WorkbenchCanvas: React.FC = () => {
       {/* Properties Inspector (Collapsible right drawer) */}
       <PropertiesInspector />
 
+      {/* Selected Wire Inspector (Bottom right popup) */}
+      <WireInspector />
+
       {/* React Flow Infinite Canvas */}
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         minZoom={0.2}
         maxZoom={2.5}
         defaultViewport={{ x: 120, y: 80, zoom: 0.95 }}
         nodesDraggable={true}
-        nodesConnectable={false} // Connections disabled in Phase 2
+        nodesConnectable={true}
         elementsSelectable={true}
         proOptions={{ hideAttribution: true }}
       >
@@ -189,8 +262,8 @@ const WorkbenchCanvas: React.FC = () => {
           bottom: '12px',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: 'rgba(6, 182, 212, 0.1)',
-          border: '1px solid rgba(6, 182, 212, 0.3)',
+          background: 'rgba(6, 182, 212, 0.12)',
+          border: '1px solid rgba(6, 182, 212, 0.35)',
           borderRadius: '20px',
           padding: '4px 14px',
           fontSize: '11px',
@@ -203,8 +276,10 @@ const WorkbenchCanvas: React.FC = () => {
           zIndex: 10
         }}
       >
-        <AlertCircle size={12} color="#06b6d4" />
-        <span>Component placement is active. Electrical wiring arrives in Phase 3.</span>
+        <Cable size={12} color="#06b6d4" />
+        <span>
+          Pin wiring is active. Drag between terminals to connect, or click Wires for the connection manager.
+        </span>
       </div>
 
       {/* Guidance Watermark when workbench is empty */}
@@ -218,7 +293,7 @@ const WorkbenchCanvas: React.FC = () => {
             textAlign: 'center',
             color: 'var(--pf-text-dim)',
             pointerEvents: 'none',
-            maxWidth: '360px',
+            maxWidth: '380px',
             zIndex: 5
           }}
         >
@@ -233,11 +308,11 @@ const WorkbenchCanvas: React.FC = () => {
             <Cpu size={28} color="#06b6d4" />
           </div>
           <p style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>
-            Workbench is Empty
+            Workbench is Ready
           </p>
           <p style={{ fontSize: '11px', lineHeight: 1.5 }}>
-            Open the Component Library on the left to drag components onto the canvas or click "Add".
-            Start with an Arduino Uno, LDR, resistors, and LED for the street light project.
+            Place components from the Library or click <strong>Layout</strong> above to load the
+            Automatic Street Light parts. Drag between terminals to wire the circuit.
           </p>
         </div>
       )}

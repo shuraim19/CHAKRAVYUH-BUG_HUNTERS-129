@@ -11,7 +11,58 @@ export interface ComponentNodeData {
   [key: string]: unknown;
 }
 
-export const ComponentNode: React.FC<NodeProps> = memo(({ id: _nodeId, data, selected }) => {
+/**
+ * Bidirectional dual-handle allowing drag-to-connect and drop-to-connect in either direction.
+ */
+const PinHandle: React.FC<{
+  id: string;
+  position: Position;
+  label: string;
+  color?: string;
+  style?: React.CSSProperties;
+  title?: string;
+}> = ({ id, position, label, color = '#cbd5e1', style = {}, title }) => {
+  return (
+    <>
+      <Handle
+        type="target"
+        position={position}
+        id={`${id}__tgt`}
+        isConnectable={true}
+        style={{
+          width: '12px',
+          height: '12px',
+          background: color,
+          border: '2px solid #0f172a',
+          borderRadius: '50%',
+          zIndex: 10,
+          cursor: 'crosshair',
+          ...style
+        }}
+        title={title || `${label} terminal (Click or drag to connect)`}
+      />
+      <Handle
+        type="source"
+        position={position}
+        id={id}
+        isConnectable={true}
+        style={{
+          width: '12px',
+          height: '12px',
+          background: color,
+          border: '2px solid #0f172a',
+          borderRadius: '50%',
+          zIndex: 11,
+          cursor: 'crosshair',
+          ...style
+        }}
+        title={title || `${label} terminal (Click or drag to connect)`}
+      />
+    </>
+  );
+};
+
+export const ComponentNode: React.FC<NodeProps> = memo(({ data, selected }) => {
   const nodeData = data as unknown as ComponentNodeData;
   const def = getComponentDefinition(nodeData.type);
 
@@ -30,7 +81,6 @@ export const ComponentNode: React.FC<NodeProps> = memo(({ id: _nodeId, data, sel
     );
   }
 
-  // Visual Renderer according to component type
   const renderVisual = () => {
     switch (nodeData.type) {
       case 'arduino-uno':
@@ -75,48 +125,48 @@ ComponentNode.displayName = 'ComponentNode';
 // ---------------- 1. Arduino Uno Visual Representation ----------------
 const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
   const topPins = [
-    { id: 'pin-aref', label: 'AREF' },
-    { id: 'pin-gnd-3', label: 'GND' },
-    { id: 'pin-d13', label: '13' },
-    { id: 'pin-d12', label: '12' },
-    { id: 'pin-d11', label: '~11' },
-    { id: 'pin-d10', label: '~10' },
-    { id: 'pin-d9', label: '~9' },
-    { id: 'pin-d8', label: '8' },
-    { id: 'pin-d7', label: '7' },
-    { id: 'pin-d6', label: '~6' },
-    { id: 'pin-d5', label: '~5' },
-    { id: 'pin-d4', label: '4' },
-    { id: 'pin-d3', label: '~3' },
-    { id: 'pin-d2', label: '2' },
-    { id: 'pin-d1', label: 'TX' },
-    { id: 'pin-d0', label: 'RX' }
+    { id: 'pin-aref', label: 'AREF', color: '#94a3b8' },
+    { id: 'pin-gnd-3', label: 'GND', color: '#f59e0b' },
+    { id: 'pin-d13', label: '13', color: '#38bdf8' },
+    { id: 'pin-d12', label: '12', color: '#38bdf8' },
+    { id: 'pin-d11', label: '~11', color: '#38bdf8' },
+    { id: 'pin-d10', label: '~10', color: '#38bdf8' },
+    { id: 'pin-d9', label: '~9', color: '#22d3ee' }, // Highlighted target pin
+    { id: 'pin-d8', label: '8', color: '#38bdf8' },
+    { id: 'pin-d7', label: '7', color: '#38bdf8' },
+    { id: 'pin-d6', label: '~6', color: '#38bdf8' },
+    { id: 'pin-d5', label: '~5', color: '#38bdf8' },
+    { id: 'pin-d4', label: '4', color: '#38bdf8' },
+    { id: 'pin-d3', label: '~3', color: '#38bdf8' },
+    { id: 'pin-d2', label: '2', color: '#38bdf8' },
+    { id: 'pin-d1', label: 'TX', color: '#cbd5e1' },
+    { id: 'pin-d0', label: 'RX', color: '#cbd5e1' }
   ];
 
   const bottomPowerPins = [
-    { id: 'pin-reset', label: 'RST' },
-    { id: 'pin-3v3', label: '3V3' },
-    { id: 'pin-5v', label: '5V' },
-    { id: 'pin-gnd-1', label: 'GND' },
-    { id: 'pin-gnd-2', label: 'GND' },
-    { id: 'pin-vin', label: 'VIN' }
+    { id: 'pin-reset', label: 'RST', color: '#94a3b8' },
+    { id: 'pin-3v3', label: '3V3', color: '#f59e0b' },
+    { id: 'pin-5v', label: '5V', color: '#ef4444' }, // Highlighted target power
+    { id: 'pin-gnd-1', label: 'GND', color: '#f59e0b' }, // Target ground
+    { id: 'pin-gnd-2', label: 'GND', color: '#f59e0b' }, // Target ground
+    { id: 'pin-vin', label: 'VIN', color: '#f59e0b' }
   ];
 
   const bottomAnalogPins = [
-    { id: 'pin-a0', label: 'A0' },
-    { id: 'pin-a1', label: 'A1' },
-    { id: 'pin-a2', label: 'A2' },
-    { id: 'pin-a3', label: 'A3' },
-    { id: 'pin-a4', label: 'A4' },
-    { id: 'pin-a5', label: 'A5' }
+    { id: 'pin-a0', label: 'A0', color: '#34d399' }, // Highlighted target analog
+    { id: 'pin-a1', label: 'A1', color: '#34d399' },
+    { id: 'pin-a2', label: 'A2', color: '#34d399' },
+    { id: 'pin-a3', label: 'A3', color: '#34d399' },
+    { id: 'pin-a4', label: 'A4', color: '#34d399' },
+    { id: 'pin-a5', label: 'A5', color: '#34d399' }
   ];
 
   return (
     <div style={{
-      width: '380px',
+      width: '390px',
       background: 'linear-gradient(145deg, #083b66 0%, #062b4a 100%)',
       borderRadius: '8px',
-      padding: '8px 12px',
+      padding: '10px 14px',
       color: '#ffffff',
       fontFamily: 'var(--font-sans)',
       position: 'relative',
@@ -126,21 +176,14 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
         {topPins.map(pin => (
           <div key={pin.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            <Handle
-              type="source"
-              position={Position.Top}
+            <PinHandle
               id={pin.id}
-              isConnectable={false}
-              style={{
-                width: '10px',
-                height: '10px',
-                background: '#cbd5e1',
-                border: '2px solid #0f172a',
-                top: '-8px'
-              }}
-              title={`${pin.label} (Wiring disabled in Phase 2)`}
+              position={Position.Top}
+              label={pin.label}
+              color={pin.color}
+              style={{ top: '-10px' }}
             />
-            <span style={{ fontSize: '9px', fontWeight: 600, color: '#93c5fd', marginTop: '2px' }}>
+            <span style={{ fontSize: '9px', fontWeight: 600, color: pin.color, marginTop: '2px' }}>
               {pin.label}
             </span>
           </div>
@@ -158,13 +201,11 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
         justifyContent: 'space-between',
         border: '1px solid rgba(255,255,255,0.1)'
       }}>
-        {/* Left: USB & Power Jacks */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ width: '28px', height: '18px', background: '#94a3b8', borderRadius: '2px', border: '1px solid #64748b' }} title="USB Type-B Port" />
           <div style={{ width: '20px', height: '16px', background: '#1e293b', borderRadius: '2px', border: '1px solid #475569' }} title="DC Barrel Jack" />
         </div>
 
-        {/* Center: Board Branding & MCU */}
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.04em', color: '#38bdf8' }}>
             ARDUINO UNO
@@ -187,7 +228,6 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
           </div>
         </div>
 
-        {/* Right: Label Badge */}
         <div style={{
           padding: '4px 8px',
           background: 'rgba(6, 182, 212, 0.2)',
@@ -202,52 +242,36 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
       </div>
 
       {/* Bottom Power & Analog Header Pins */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-        {/* Power Group */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
         <div style={{ display: 'flex', gap: '10px' }}>
           {bottomPowerPins.map(pin => (
             <div key={pin.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-              <span style={{ fontSize: '9px', fontWeight: 600, color: '#f59e0b', marginBottom: '2px' }}>
+              <span style={{ fontSize: '9px', fontWeight: 600, color: pin.color, marginBottom: '2px' }}>
                 {pin.label}
               </span>
-              <Handle
-                type="source"
-                position={Position.Bottom}
+              <PinHandle
                 id={pin.id}
-                isConnectable={false}
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  background: '#f59e0b',
-                  border: '2px solid #0f172a',
-                  bottom: '-8px'
-                }}
-                title={`${pin.label} (Power/GND)`}
+                position={Position.Bottom}
+                label={pin.label}
+                color={pin.color}
+                style={{ bottom: '-10px' }}
               />
             </div>
           ))}
         </div>
 
-        {/* Analog Group */}
         <div style={{ display: 'flex', gap: '10px' }}>
           {bottomAnalogPins.map(pin => (
             <div key={pin.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-              <span style={{ fontSize: '9px', fontWeight: 600, color: '#34d399', marginBottom: '2px' }}>
+              <span style={{ fontSize: '9px', fontWeight: 600, color: pin.color, marginBottom: '2px' }}>
                 {pin.label}
               </span>
-              <Handle
-                type="source"
-                position={Position.Bottom}
+              <PinHandle
                 id={pin.id}
-                isConnectable={false}
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  background: '#34d399',
-                  border: '2px solid #0f172a',
-                  bottom: '-8px'
-                }}
-                title={`${pin.label} (Analog In)`}
+                position={Position.Bottom}
+                label={pin.label}
+                color={pin.color}
+                style={{ bottom: '-10px' }}
               />
             </div>
           ))}
@@ -309,7 +333,6 @@ const Esp32Visual: React.FC<{ label: string }> = ({ label }) => {
         </div>
       </div>
 
-      {/* RF Shield Illustration */}
       <div style={{
         background: '#334155',
         borderRadius: '4px',
@@ -324,26 +347,18 @@ const Esp32Visual: React.FC<{ label: string }> = ({ label }) => {
         ESP-WROOM-32 • Wi-Fi &amp; BLE • Dual Core 240MHz
       </div>
 
-      {/* Exposed Subset Pins */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
         {pins.map(pin => (
           <div key={pin.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
             <span style={{ fontSize: '9px', fontWeight: 600, color: pin.color, marginBottom: '3px' }}>
               {pin.label}
             </span>
-            <Handle
-              type="source"
-              position={Position.Bottom}
+            <PinHandle
               id={pin.id}
-              isConnectable={false}
-              style={{
-                width: '10px',
-                height: '10px',
-                background: pin.color,
-                border: '2px solid #0f172a',
-                bottom: '-8px'
-              }}
-              title={`${pin.label} (Wiring arrives in Phase 3)`}
+              position={Position.Bottom}
+              label={pin.label}
+              color={pin.color}
+              style={{ bottom: '-10px' }}
             />
           </div>
         ))}
@@ -362,29 +377,21 @@ const ResistorVisual: React.FC<{ label: string; properties: Record<string, unkno
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      padding: '10px 14px',
+      padding: '10px 16px',
       background: '#0d131f',
       borderRadius: '6px',
       position: 'relative',
-      minWidth: '170px'
+      minWidth: '175px'
     }}>
-      {/* Left Terminal Handle */}
-      <Handle
-        type="source"
-        position={Position.Left}
+      {/* Terminal 1 Handle on Left */}
+      <PinHandle
         id="pin-1"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#94a3b8',
-          border: '2px solid #0f172a',
-          left: '-5px'
-        }}
-        title="Terminal 1"
+        position={Position.Left}
+        label="Terminal 1"
+        color="#38bdf8"
+        style={{ left: '-6px' }}
       />
 
-      {/* Axial Wire Lead */}
       <div style={{ width: '16px', height: '2px', background: '#94a3b8' }} />
 
       {/* Resistor Body */}
@@ -400,33 +407,23 @@ const ResistorVisual: React.FC<{ label: string; properties: Record<string, unkno
         boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
         border: '1px solid #b8946e'
       }}>
-        {/* Color Bands */}
         <div style={{ width: '4px', height: '100%', background: '#dc2626' }} />
         <div style={{ width: '4px', height: '100%', background: '#dc2626' }} />
         <div style={{ width: '4px', height: '100%', background: '#78350f' }} />
         <div style={{ width: '4px', height: '100%', background: '#d97706' }} />
       </div>
 
-      {/* Right Wire Lead */}
       <div style={{ width: '16px', height: '2px', background: '#94a3b8' }} />
 
-      {/* Right Terminal Handle */}
-      <Handle
-        type="source"
-        position={Position.Right}
+      {/* Terminal 2 Handle on Right */}
+      <PinHandle
         id="pin-2"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#94a3b8',
-          border: '2px solid #0f172a',
-          right: '-5px'
-        }}
-        title="Terminal 2"
+        position={Position.Right}
+        label="Terminal 2"
+        color="#38bdf8"
+        style={{ right: '-6px' }}
       />
 
-      {/* Value Label */}
       <div style={{ marginLeft: '10px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>{label}</span>
         <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: '#38bdf8' }}>{displayVal}</span>
@@ -443,7 +440,8 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
     red: { body: '#ef4444', border: '#b91c1c', glow: 'rgba(239, 68, 68, 0.3)' },
     green: { body: '#22c55e', border: '#15803d', glow: 'rgba(34, 197, 94, 0.3)' },
     blue: { body: '#3b82f6', border: '#1d4ed8', glow: 'rgba(59, 130, 246, 0.3)' },
-    yellow: { body: '#eab308', border: '#a16207', glow: 'rgba(234, 179, 8, 0.3)' }
+    yellow: { body: '#eab308', border: '#a16207', glow: 'rgba(234, 179, 8, 0.3)' },
+    white: { body: '#f8fafc', border: '#94a3b8', glow: 'rgba(255, 255, 255, 0.4)' }
   };
 
   const theme = colorMap[color] || colorMap.red;
@@ -452,29 +450,21 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      padding: '10px 14px',
+      padding: '10px 16px',
       background: '#0d131f',
       borderRadius: '6px',
       position: 'relative',
-      minWidth: '160px'
+      minWidth: '170px'
     }}>
-      {/* Anode Terminal (A/+) Handle on Left */}
-      <Handle
-        type="source"
-        position={Position.Left}
+      {/* Anode Handle (A / +) on Left */}
+      <PinHandle
         id="anode"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#ef4444',
-          border: '2px solid #0f172a',
-          left: '-5px'
-        }}
-        title="Anode (A / +)"
+        position={Position.Left}
+        label="Anode (A / +)"
+        color="#ef4444"
+        style={{ left: '-6px' }}
       />
 
-      {/* Anode Lead */}
       <div style={{ width: '12px', height: '2px', background: '#94a3b8' }} />
 
       {/* 5mm LED Dome */}
@@ -489,32 +479,22 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        opacity: 0.85
+        opacity: 0.9
       }}>
-        {/* Internal reflector wire */}
         <div style={{ width: '8px', height: '10px', borderLeft: '1px solid #ffffff', opacity: 0.5 }} />
       </div>
 
-      {/* Cathode Lead */}
       <div style={{ width: '12px', height: '2px', background: '#94a3b8' }} />
 
-      {/* Cathode Terminal (K/-) Handle on Right */}
-      <Handle
-        type="source"
-        position={Position.Right}
+      {/* Cathode Handle (K / -) on Right */}
+      <PinHandle
         id="cathode"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#38bdf8',
-          border: '2px solid #0f172a',
-          right: '-5px'
-        }}
-        title="Cathode (K / -)"
+        position={Position.Right}
+        label="Cathode (K / -)"
+        color="#38bdf8"
+        style={{ right: '-6px' }}
       />
 
-      {/* Label and Info */}
       <div style={{ marginLeft: '10px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>{label}</span>
         <span style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'capitalize' }}>{color} LED</span>
@@ -533,29 +513,21 @@ const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      padding: '10px 14px',
+      padding: '10px 16px',
       background: '#0d131f',
       borderRadius: '6px',
       position: 'relative',
-      minWidth: '170px'
+      minWidth: '175px'
     }}>
-      {/* Terminal 1 Handle */}
-      <Handle
-        type="source"
-        position={Position.Left}
+      {/* Terminal 1 Handle on Left */}
+      <PinHandle
         id="pin-1"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#94a3b8',
-          border: '2px solid #0f172a',
-          left: '-5px'
-        }}
-        title="LDR Terminal 1"
+        position={Position.Left}
+        label="Terminal 1"
+        color="#f59e0b"
+        style={{ left: '-6px' }}
       />
 
-      {/* Left Lead */}
       <div style={{ width: '14px', height: '2px', background: '#94a3b8' }} />
 
       {/* Disc Ceramic Sensor Head */}
@@ -570,30 +542,20 @@ const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }
         justifyContent: 'center',
         boxShadow: '0 0 8px rgba(234, 88, 12, 0.25)'
       }}>
-        {/* Serpentine CdS Track Track Pattern */}
         <Zap size={16} color="#c2410c" />
       </div>
 
-      {/* Right Lead */}
       <div style={{ width: '14px', height: '2px', background: '#94a3b8' }} />
 
-      {/* Terminal 2 Handle */}
-      <Handle
-        type="source"
-        position={Position.Right}
+      {/* Terminal 2 Handle on Right */}
+      <PinHandle
         id="pin-2"
-        isConnectable={false}
-        style={{
-          width: '10px',
-          height: '10px',
-          background: '#94a3b8',
-          border: '2px solid #0f172a',
-          right: '-5px'
-        }}
-        title="LDR Terminal 2"
+        position={Position.Right}
+        label="Terminal 2"
+        color="#f59e0b"
+        style={{ right: '-6px' }}
       />
 
-      {/* Label and Info */}
       <div style={{ marginLeft: '10px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>{label}</span>
         <span style={{ fontSize: '10px', color: '#ea580c' }}>Photoresistor</span>

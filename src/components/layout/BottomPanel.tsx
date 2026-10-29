@@ -7,7 +7,10 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
-  Info
+  Info,
+  CheckCircle2,
+  Cable,
+  Cpu
 } from 'lucide-react';
 
 export const BottomPanel: React.FC = () => {
@@ -20,7 +23,11 @@ export const BottomPanel: React.FC = () => {
     toggleBottomCollapsed,
     logs,
     diagnostics,
-    clearLogs
+    clearLogs,
+    validationSummary,
+    selectComponent,
+    selectWire,
+    openFile
   } = useProjectStore();
 
   const [isResizing, setIsResizing] = useState(false);
@@ -50,6 +57,16 @@ export const BottomPanel: React.FC = () => {
 
   const errorCount = diagnostics.filter(d => d.severity === 'error').length;
   const warnCount = diagnostics.filter(d => d.severity === 'warning').length;
+
+  const handleDiagnosticClick = (diag: typeof diagnostics[0]) => {
+    if (diag.wireIds && diag.wireIds.length > 0) {
+      selectWire(diag.wireIds[0]);
+    } else if (diag.componentIds && diag.componentIds.length > 0) {
+      selectComponent(diag.componentIds[0]);
+    } else if (diag.fileLocation?.fileId) {
+      openFile(diag.fileLocation.fileId);
+    }
+  };
 
   return (
     <div
@@ -162,50 +179,136 @@ export const BottomPanel: React.FC = () => {
 
           {activeBottomTab === 'problems' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* Notice regarding future circuit diagnostics */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 8px',
-                background: 'rgba(15, 23, 42, 0.8)',
-                borderRadius: '4px',
-                fontSize: '11px',
-                color: '#94a3b8',
-                border: '1px solid #1e293b'
-              }}>
-                <Info size={13} color="#06b6d4" />
-                <span>
-                  Showing file syntax diagnostics. Electrical schematic and circuit connection checks
-                  will activate in Phase 3.
-                </span>
-              </div>
-
-              {diagnostics.length === 0 ? (
-                <div style={{ color: 'var(--pf-success)', padding: '6px 0' }}>
-                  ✓ No file syntax problems detected.
+              {/* Not yet validated state */}
+              {!validationSummary.tested ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  borderRadius: '4px',
+                  border: '1px solid #1e293b',
+                  fontSize: '12px',
+                  color: '#94a3b8'
+                }}>
+                  <Info size={14} color="#06b6d4" style={{ flexShrink: 0 }} />
+                  <span>
+                    Circuit validation has not been run yet. Click <strong>Validate Circuit</strong> in the top
+                    toolbar to test netlist integrity, shorts, and Automatic Street Light reference topology.
+                  </span>
+                </div>
+              ) : diagnostics.length === 0 ? (
+                /* Passed validation state */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    color: '#34d399',
+                    fontWeight: 500
+                  }}>
+                    <CheckCircle2 size={16} />
+                    <span>No errors found by the implemented checks.</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', paddingLeft: '4px' }}>
+                    * Validation is limited to static netlist rules and reference topology. It is not a full electrical safety analysis.
+                  </div>
                 </div>
               ) : (
-                diagnostics.map(diag => (
-                  <div
-                    key={diag.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      padding: '4px 6px',
-                      background: 'rgba(244, 63, 94, 0.08)',
-                      borderLeft: '2px solid #f43f5e',
-                      borderRadius: '2px'
-                    }}
-                  >
-                    <AlertTriangle size={14} color="#f43f5e" style={{ marginTop: '2px', flexShrink: 0 }} />
-                    <div>
-                      <div style={{ color: '#f43f5e', fontWeight: 600 }}>{diag.code}</div>
-                      <div style={{ color: '#cbd5e1' }}>{diag.message}</div>
-                    </div>
+                /* Diagnostics list */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {diagnostics.map(diag => {
+                    const isError = diag.severity === 'error';
+                    const isWarn = diag.severity === 'warning';
+                    const borderCol = isError ? '#f43f5e' : isWarn ? '#fbbf24' : '#38bdf8';
+                    const bgCol = isError ? 'rgba(244, 63, 94, 0.08)' : isWarn ? 'rgba(251, 191, 36, 0.08)' : 'rgba(56, 189, 248, 0.08)';
+
+                    return (
+                      <div
+                        key={diag.id}
+                        onClick={() => handleDiagnosticClick(diag)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          padding: '6px 10px',
+                          background: bgCol,
+                          borderLeft: `3px solid ${borderCol}`,
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                        title="Click to select component or wire in workbench"
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                          <AlertTriangle
+                            size={14}
+                            color={borderCol}
+                            style={{ marginTop: '2px', flexShrink: 0 }}
+                          />
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ color: borderCol, fontWeight: 700, fontSize: '11px' }}>
+                                [{diag.code}]
+                              </span>
+                              <span style={{ color: '#f8fafc', fontSize: '11px' }}>
+                                {diag.message}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Location tags */}
+                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                          {diag.componentIds?.map(cId => (
+                            <span
+                              key={cId}
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#1e293b',
+                                color: '#38bdf8',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                            >
+                              <Cpu size={10} />
+                              {cId}
+                            </span>
+                          ))}
+                          {diag.wireIds && diag.wireIds.length > 0 && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#1e293b',
+                                color: '#a855f7',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                            >
+                              <Cable size={10} />
+                              wire
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>
+                    * Validation is limited to static netlist rules and reference topology. It is not a full electrical safety analysis.
                   </div>
-                ))
+                </div>
               )}
             </div>
           )}

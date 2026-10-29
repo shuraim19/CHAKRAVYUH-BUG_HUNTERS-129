@@ -63,6 +63,7 @@ describe('Project Store Workbench Integration', () => {
   it('rejects duplicate component labels', () => {
     const store = useProjectStore.getState();
     const r1 = store.addComponent('resistor');
+    expect(r1?.label).toBe('R1');
     const r2 = store.addComponent('resistor');
 
     // Attempt to rename r2 to 'R1'
