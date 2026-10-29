@@ -24,6 +24,7 @@ import { isDuplicateWire } from '../domain/circuit/netlist';
 import { validateCircuit } from '../domain/circuit/validate';
 import { validateStreetLightTopology } from '../domain/circuit/streetLightTopology';
 import { GeneralValidationResult, StreetLightValidationResult } from '../domain/circuit/types';
+import { ChatMessage, CodeProposal } from '../lib/assistant-client';
 
 export type BottomTab = 'output' | 'problems' | 'serial';
 export type MobileTab = 'files' | 'workbench' | 'assistant';
@@ -61,6 +62,13 @@ export interface ProjectState {
     errorCount: number;
     warningCount: number;
   };
+
+  // Assistant State
+  assistantMessages: ChatMessage[];
+  activeProposal: CodeProposal | null;
+  lastUndoProposal: { proposalId: string; fileId: string; previousContent: string; appliedContent: string } | null;
+  assistantStatus: { configured: boolean; model: string };
+  isAssistantLoading: boolean;
 
   // Actions
   initialize: () => void;
@@ -111,6 +119,16 @@ export interface ProjectState {
   setPaletteOpen: (open: boolean) => void;
   setInspectorOpen: (open: boolean) => void;
   clearWorkbench: () => void;
+
+  // Assistant Actions
+  setAssistantStatus: (status: { configured: boolean; model: string }) => void;
+  setAssistantLoading: (loading: boolean) => void;
+  addAssistantMessage: (msg: ChatMessage) => void;
+  clearAssistantMessages: () => void;
+  setActiveProposal: (proposal: CodeProposal | null) => void;
+  applyProposal: (proposal: CodeProposal) => { success: boolean; error?: string };
+  rejectProposal: (proposalId: string) => void;
+  undoProposal: () => { success: boolean; error?: string };
 }
 
 /**
@@ -183,6 +201,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     warningCount: 0
   },
 
+  // Assistant state
+  assistantMessages: [],
+  activeProposal: null,
+  lastUndoProposal: null,
+  assistantStatus: { configured: false, model: 'gemini-3.5-flash-lite' },
+  isAssistantLoading: false,
+
   initialize: () => {
     // Purge any legacy browser storage records so projects remain strictly session-only
     cleanupLegacyStorage();
@@ -194,6 +219,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       openTabIds: initialTab ? [initialTab] : [],
       activeTabId: initialTab,
       saveStatus: 'saved',
+      assistantMessages: [],
+      activeProposal: null,
+      lastUndoProposal: null,
       logs: [
         {
           id: `log-${Date.now()}`,
@@ -443,7 +471,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         readyForSimulation: false,
         errorCount: 0,
         warningCount: 0
-      }
+      },
+      assistantMessages: [],
+      activeProposal: null,
+      lastUndoProposal: null
     });
 
     get().addLog('info', 'Started fresh in-memory project workspace.');
@@ -480,7 +511,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         readyForSimulation: false,
         errorCount: 0,
         warningCount: 0
-      }
+      },
+      assistantMessages: [],
+      activeProposal: null,
+      lastUndoProposal: null
     });
 
     get().addLog('info', `Successfully imported project "${imported.name}" with ${imported.circuit.components.length} components and ${imported.circuit.wires.length} wires.`);
@@ -1028,5 +1062,126 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
 
     get().addLog('info', 'Cleared all components and wires from the workbench.');
+  },
+
+  // Assistant Implementation
+  setAssistantStatus: (status) => {
+    set({ assistantStatus: status });
+  },
+
+  setAssistantLoading: (loading) => {
+    set({ isAssistantLoading: loading });
+  },
+
+  addAssistantMessage: (msg) => {
+    set(state => ({
+      assistantMessages: [...state.assistantMessages, msg]
+    }));
+  },
+
+  clearAssistantMessages: () => {
+    set({ assistantMessages: [], activeProposal: null });
+  },
+
+  setActiveProposal: (proposal) => {
+    set({ activeProposal: proposal });
+  },
+
+  applyProposal: (proposal: CodeProposal) => {
+    const { project } = get();
+    if (proposal.projectId !== project.id) {
+      return { success: false, error: 'Proposal belongs to a different project instance.' };
+    }
+
+    const targetFile = project.files.find(f => f.id === proposal.fileId || f.path === proposal.filePath);
+    if (!targetFile) {
+      return { success: false, error: `Target file ${proposal.filePath} not found.` };
+    }
+
+    if (targetFile.content !== proposal.expectedOriginalContent) {
+      return {
+        success: false,
+        error: 'File content has changed since this proposal was generated. Proposal is stale.'
+      };
+    }
+
+    // Capture undo snapshot before applying
+    const undoRecord = {
+      proposalId: proposal.id,
+      fileId: targetFile.id,
+      previousContent: targetFile.content,
+      appliedContent: proposal.replacementContent
+    };
+
+    const updatedFiles = project.files.map(f => {
+      if (f.id === targetFile.id) {
+        return { ...f, content: proposal.replacementContent };
+      }
+      return f;
+    });
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      activeProposal: null,
+      lastUndoProposal: undoRecord,
+      saveStatus: 'unsaved',
+      dirtyFiles: {
+        ...get().dirtyFiles,
+        [targetFile.id]: true
+      }
+    });
+
+    get().addLog('info', `Applied Gemini code proposal: ${proposal.summary}`);
+    return { success: true };
+  },
+
+  rejectProposal: (_proposalId: string) => {
+    set({ activeProposal: null });
+    get().addLog('info', 'Rejected Gemini code proposal without modifications.');
+  },
+
+  undoProposal: () => {
+    const { lastUndoProposal, project } = get();
+    if (!lastUndoProposal) {
+      return { success: false, error: 'No proposal change available to undo.' };
+    }
+
+    const targetFile = project.files.find(f => f.id === lastUndoProposal.fileId);
+    if (!targetFile) {
+      return { success: false, error: 'Target file no longer exists.' };
+    }
+
+    if (targetFile.content !== lastUndoProposal.appliedContent) {
+      return {
+        success: false,
+        error: 'File was modified after accepting the proposal. Cannot undo safely.'
+      };
+    }
+
+    const updatedFiles = project.files.map(f => {
+      if (f.id === targetFile.id) {
+        return { ...f, content: lastUndoProposal.previousContent };
+      }
+      return f;
+    });
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      lastUndoProposal: null,
+      saveStatus: 'unsaved'
+    });
+
+    get().addLog('info', 'Reverted Gemini code proposal to prior version.');
+    return { success: true };
   }
 }));

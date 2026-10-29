@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -p \"[{name}]\" -n \"server,client\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx server/dev.ts",
+    "dev:client": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "@xyflow/react": "^12.12.0",
     "lucide-react": "^1.16.0",
     "monaco-editor": "^0.52.2",
@@ -22,7 +25,10 @@
     "@types/node": "^22.13.9",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@vercel/node": "^28.0.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "vite": "^6.2.0",
     "vitest": "^3.0.7"
