@@ -9,7 +9,7 @@ import {
 } from './assistant-contracts.js';
 
 // Default model per specification
-const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+const DEFAULT_MODEL = 'gemini-2.0-flash-lite';
 
 export const SYSTEM_INSTRUCTION = `You are ProtoForge AI's educational electronics assistant.
 Use the supplied project snapshot and deterministic diagnostics.

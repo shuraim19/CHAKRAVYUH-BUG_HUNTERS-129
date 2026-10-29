@@ -127,7 +127,7 @@ The assistant panel provides real-time educational engineering support:
 
 2. **Security & Cost Guardrails**:
    - **Server-Side Only**: Official `@google/genai` SDK runs exclusively on the backend (`server/dev.ts` locally or `api/assistant.ts` on Vercel). No API keys or SDK modules are bundled into frontend assets.
-   - **Default Model**: Configured for `gemini-3.5-flash-lite` on the free tier.
+   - **Default Model**: Configured for `gemini-2.0-flash-lite` — a fast, cost-efficient Google Gemini model.
    - **Strict Input Sanitization**: 64 KiB request body limit, 4,000 character message limit, 8-message history cap, and rejection of client-supplied system/developer roles.
    - **In-Memory Rate Limiting**: Enforces a per-client sliding window (max 10 requests / minute) with retry headers.
    - **Truthful Unconfigured State**: If `GEMINI_API_KEY` is not present, the assistant displays *"AI Not Configured"* and leaves the electronics lab fully usable.
@@ -153,7 +153,7 @@ cp .env.example .env.local
 Open `.env.local` in your editor and enter your Google AI Studio API key:
 ```env
 GEMINI_API_KEY=your_actual_gemini_api_key_here
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-2.0-flash-lite
 ```
 > [!IMPORTANT]
 > - `.env.local` is gitignored and will never be tracked or committed.
