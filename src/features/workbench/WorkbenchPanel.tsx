@@ -17,6 +17,7 @@ import { ComponentPalette } from './ComponentPalette';
 import { PropertiesInspector } from './PropertiesInspector';
 import { WorkbenchToolbar } from './WorkbenchToolbar';
 import { WireInspector } from './WireInspector';
+import { SimulationControlsOverlay } from './SimulationControlsOverlay';
 import { Cpu, Cable } from 'lucide-react';
 
 const nodeTypes = {
@@ -40,7 +41,9 @@ const WorkbenchCanvas: React.FC = () => {
     deleteWire,
     isPaletteOpen,
     setPaletteOpen,
-    addLog
+    addLog,
+    simulationStatus,
+    simulationTelemetry
   } = useProjectStore();
 
   // Convert authoritative store components to React Flow Nodes
@@ -54,10 +57,12 @@ const WorkbenchCanvas: React.FC = () => {
         id: comp.id,
         type: comp.type,
         label: comp.label,
-        properties: comp.properties
+        properties: comp.properties,
+        simulationStatus,
+        simulationTelemetry
       }
     }));
-  }, [project.circuit.components, selectedComponentId]);
+  }, [project.circuit.components, selectedComponentId, simulationStatus, simulationTelemetry]);
 
   // Convert authoritative store wires to React Flow Edges
   const edges: Edge[] = useMemo(() => {
@@ -215,6 +220,9 @@ const WorkbenchCanvas: React.FC = () => {
     >
       {/* Workbench Floating Toolbar */}
       <WorkbenchToolbar />
+
+      {/* Floating Simulation Controls HUD */}
+      <SimulationControlsOverlay />
 
       {/* Component Library Palette (Collapsible left drawer) */}
       <ComponentPalette

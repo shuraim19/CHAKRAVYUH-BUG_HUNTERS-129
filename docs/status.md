@@ -13,15 +13,62 @@
 | **Phase 1** | Foundation & IDE Interface (Explorer, Monaco Editor, Project Structure) | P0 | **Implemented & Verified** |
 | **Phase 2** | Component Registry & Interactive Electronics Workbench | P0 | **Implemented & Verified** |
 | **Phase 3** | Pin Wiring, Circuit Netlist, Validation & Session-Only Storage | P0 | **Implemented & Verified** |
-| **Phase 4** | Gemini Engineering Assistant & Reviewed Proposals | P1 | **Implemented & Verified** |
-| **Phase 5** | Functional Automatic Street Light Experiment Simulation | P0 | Deferred to Phase 5 |
-| **Phase 6** | End-to-End Polish, Documentation & Vercel Deployment | P1 | Next Phase |
+| **Phase 4** | Functional Electronics Simulation Engine (Automatic Street Light) | P0 | **Implemented & Verified** |
+| **Phase 5** | Extended Multi-Experiment Simulations & Hardware Expansion | P1 | Planned Next |
+| **Phase 6** | End-to-End Polish, Documentation & Vercel Deployment | P1 | Final Phase |
 
 ---
 
-## Phase 4 Deliverables (Gemini Engineering Assistant & Reviewed Proposals)
+## Phase 4 Deliverables: Functional Electronics Simulation Engine
 
 ### Implemented
+
+1. **Simulation Domain Engine & Architecture (`src/domain/simulation/`)**:
+   - **Modular Separation**: Decoupled simulation lifecycle, mathematical sensor models, component runtime state, control rules, and diagnostic event emission.
+   - **Deterministic LDR Divider Model (`models/ldrModel.ts`)**:
+     - Exponential resistance equation: $R_{LDR} = 100,000 \times (1,000 / 100,000)^{(lightPercentage / 100)}$.
+     - Precise voltage calculation: $V_{A0} = 5.0 \times R_{div} / (R_{LDR} + R_{div})$.
+     - Scaled ADC count: $\text{round}((V_{A0} / 5.0) \times 1023)$.
+     - Clamped safely to valid electrical bounds ($0.0 - 5.0\text{ V}$, $0 - 1023\text{ counts}$).
+   - **Automatic Street Light Engine (`streetLightEngine.ts`)**:
+     - Evaluates active project netlist against the reference street-light topology.
+     - Controls Arduino digital pin 9 based on darkness comparison ($ADC < threshold \implies HIGH$, else $LOW$).
+     - Detects component property faults (e.g., incorrect divider or series resistor values).
+     - Prioritizes critical hardware faults (reversed LED polarity, missing resistors, direct shorts).
+
+2. **Simulation Controls & State Management (`src/store/projectStore.ts`)**:
+   - **Run**: Validates circuit topology, initializes deterministic inputs, enters `running` status, and emits startup telemetry.
+   - **Stop**: Freezes runtime updates, resets actuator outputs to zero volts / unlit, and transitions to `stopped` without modifying circuit design.
+   - **Reset**: Re-initializes simulation runtime parameters (20% ambient light, 512 threshold) while strictly preserving all student components, wires, and code files.
+   - **Dynamic Re-evaluation**: Wires added/deleted, components moved/deleted, or properties updated dynamically re-evaluate active simulations without requiring a full manual stop/start.
+
+3. **Interactive Simulation Visualization (`src/features/workbench/`)**:
+   - **Simulation HUD Overlay (`SimulationControlsOverlay.tsx`)**:
+     - Real-time Ambient Light slider ($0\% - 100\%$) with Moon and Sun icons.
+     - Darkness Threshold slider ($0 - 1023$) with live ADC comparison badge.
+     - Telemetry status cards: Ambient Light %, Photoresistor Resistance ($k\Omega$), Analog In $A0$ ($V$ & $ADC$), Arduino Pin 9 Output ($0V / 5V$), and Lamp State.
+     - Toggleable collapse/expand button to maximize workbench view.
+   - **Dynamic Canvas Rendering (`ComponentNode.tsx`)**:
+     - **LED Component**: Radiant visual dome illumination with soft radial glow shadow when ON (`● ON • 5.0V`, `~8.2 mA`), dimmed transparent casing when OFF.
+     - **Photoresistor (LDR)**: Dynamic daylight disc color shifting from night navy to daylight yellow, with live resistance readout.
+     - **Arduino Uno R3**: Real-time pin badges for `~9 [5V]` / `~9 [0V]` and `A0 [ADC]`.
+   - **Top Toolbar**: Live animated status badge (`RUNNING` green pulse, `FAULT` red warning, or `STOPPED` neutral).
+
+4. **Output Event Stream (`src/components/layout/BottomPanel.tsx`)**:
+   - Clean, distinct simulation events logged with timestamps into the IDE's bottom Output console:
+     - `[SIMULATION] Automatic Street Light simulation started.`
+     - `[SIMULATION] Ambient light adjusted to X% -> A0: Y.YYV (ADC: Z).`
+     - `[SIMULATION] Darkness threshold crossed -> LED output turned ON/OFF.`
+     - `[SIMULATION] Wiring fault detected: ...`
+     - `[SIMULATION] Simulation stopped / reset.`
+
+5. **Fault Detection & Circuit Safety**:
+   - Complete wire break or terminal disconnection halts active simulation and reports the specific missing net.
+   - LED reversed polarity halts simulation with `LED_REVERSED_POLARITY`.
+   - Missing or bypassed series resistor triggers `LED_SERIES_RESISTOR_DISCONNECTED` / `LED_SERIES_RESISTOR_INVALID`.
+   - Direct 5V to GND power short triggers immediate circuit fault isolation.
+
+---
 
 1. **Server Architecture & Official SDK (`@google/genai`)**:
    - **Zero Client-Side SDK Exposure**: The `@google/genai` SDK is imported and executed strictly server-side. No API keys, credentials, or AI models are bundled into the client bundle.
@@ -77,8 +124,8 @@
 ## Test & Verification Results
 
 ### Unit Test Suite (`npm test` via Vitest)
-- **Total Test Files**: 5 passed (5 total)
-- **Total Tests**: **51 passed (51 total)**
+- **Total Test Files**: 6 passed (6 total)
+- **Total Tests**: **70 passed (70 total)**
 - **Coverage**:
   1. Undirected duplicate-wire detection.
   2. Multiple connections sharing one ground pin.
@@ -109,6 +156,18 @@
   27. `importProject` purges chat messages and active proposals.
   28. Secret scanner test: ensures no `VITE_` or API keys exist in client sources.
   29. Circuit lab and validator independence: remains 100% functional without AI configured.
+  30. LDR resistance decreases strictly monotonically as illumination increases from 0% to 100%.
+  31. Voltage divider formula yields higher A0 voltage in bright light than darkness.
+  32. ADC count clamps cleanly between 0 and 1023.
+  33. LED output logic: turns ON when ADC < threshold, turns OFF when ADC >= threshold.
+  34. Dynamic threshold test: lowering threshold keeps LED OFF, raising threshold turns LED ON.
+  35. Valid reference street-light circuit topology starts simulation and outputs running telemetry.
+  36. Invalid or unconnected topology prevents starting simulation and transitions to stopped.
+  37. Disconnecting critical wires (LDR 5V, GND, A0, D9, LED GND) halts running simulation to FAULT and turns LED OFF.
+  38. Reconnecting missing wire dynamically restores valid running simulation state.
+  39. Reversed LED polarity during running simulation halts to FAULT with LED_REVERSED_POLARITY diagnostic.
+  40. Stop and Reset controls restore defaults and reset outputs to 0V / OFF without deleting components or wires.
+  41. Unsupported circuit configurations are safely recognized as unsupported and not falsely simulated.
 
 ### Production Build (`npm run build`)
 - TypeScript type-checking (`tsc`): Zero errors across both frontend and server modules.

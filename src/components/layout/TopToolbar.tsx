@@ -24,7 +24,11 @@ export const TopToolbar: React.FC = () => {
     newProject,
     forceNewProject,
     runValidation,
-    validationSummary
+    validationSummary,
+    simulationStatus,
+    startSimulation,
+    stopSimulation,
+    resetSimulation
   } = useProjectStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
@@ -215,30 +219,119 @@ export const TopToolbar: React.FC = () => {
 
         <div style={{ width: '1px', height: '16px', background: 'var(--pf-border-color)', margin: '0 4px' }} />
 
-        {/* Disabled Simulation Controls (Arrive in Phase 4) */}
+        {/* Functional Simulation Controls (Phase 4) */}
         <div className="tooltip-wrap">
-          <button disabled className="toolbar-btn" aria-disabled="true">
-            <Play size={13} />
-            <span>Run</span>
+          <button
+            className={`toolbar-btn ${simulationStatus === 'running' ? 'active-sim success' : 'primary'}`}
+            onClick={() => startSimulation()}
+            title="Start functional electronics simulation"
+            style={{
+              padding: '4px 10px',
+              fontSize: '11px',
+              backgroundColor: simulationStatus === 'running' ? 'rgba(16, 185, 129, 0.2)' : undefined,
+              borderColor: simulationStatus === 'running' ? '#10b981' : undefined,
+              color: simulationStatus === 'running' ? '#34d399' : undefined
+            }}
+          >
+            <Play size={13} fill={simulationStatus === 'running' ? '#34d399' : 'none'} />
+            <span>{simulationStatus === 'running' ? 'Running' : 'Run'}</span>
           </button>
-          <span className="tooltip-text">Functional simulation arrives in Phase 4.</span>
+          <span className="tooltip-text">
+            {simulationStatus === 'running' ? 'Simulation is running. Click to re-evaluate.' : 'Start Automatic Street Light functional simulation.'}
+          </span>
         </div>
 
         <div className="tooltip-wrap">
-          <button disabled className="toolbar-btn" aria-disabled="true">
+          <button
+            disabled={simulationStatus === 'idle' || simulationStatus === 'stopped'}
+            className="toolbar-btn"
+            onClick={() => stopSimulation()}
+            aria-disabled={simulationStatus === 'idle' || simulationStatus === 'stopped'}
+            title="Stop simulation and turn off actuators"
+            style={{
+              padding: '4px 10px',
+              fontSize: '11px',
+              opacity: simulationStatus === 'idle' || simulationStatus === 'stopped' ? 0.45 : 1
+            }}
+          >
             <Square size={13} />
             <span>Stop</span>
           </button>
-          <span className="tooltip-text">Functional simulation arrives in Phase 4.</span>
+          <span className="tooltip-text">Stop simulation and turn off outputs.</span>
         </div>
 
         <div className="tooltip-wrap">
-          <button disabled className="toolbar-btn" aria-disabled="true">
+          <button
+            className="toolbar-btn"
+            onClick={() => resetSimulation()}
+            title="Reset simulation parameters to default (20% light, 512 threshold)"
+            style={{ padding: '4px 10px', fontSize: '11px' }}
+          >
             <RotateCcw size={13} />
             <span>Reset</span>
           </button>
-          <span className="tooltip-text">Functional simulation arrives in Phase 4.</span>
+          <span className="tooltip-text">Reset light level (20%) and threshold (512) to defaults.</span>
         </div>
+
+        {/* Live Simulation Status Indicator */}
+        {simulationStatus === 'running' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: '12px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#34d399',
+              letterSpacing: '0.04em'
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#10b981',
+                boxShadow: '0 0 8px #10b981'
+              }}
+            />
+            <span>RUNNING</span>
+          </div>
+        )}
+
+        {simulationStatus === 'fault' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              background: 'rgba(244, 63, 94, 0.15)',
+              border: '1px solid rgba(244, 63, 94, 0.4)',
+              borderRadius: '12px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#f43f5e',
+              letterSpacing: '0.04em'
+            }}
+            title="Wiring fault detected during simulation. Fix connections in workbench to resume."
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#f43f5e',
+                boxShadow: '0 0 8px #f43f5e'
+              }}
+            />
+            <span>FAULT</span>
+          </div>
+        )}
       </div>
 
       {/* Right: Session Notice, Import/Download & New */}

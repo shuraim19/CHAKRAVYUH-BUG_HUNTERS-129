@@ -1,13 +1,16 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { getComponentDefinition } from '../../domain/components/registry';
-import { Cpu, Zap } from 'lucide-react';
+import { Cpu, Zap, Activity } from 'lucide-react';
+import { StreetLightTelemetry } from '../../domain/simulation';
 
 export interface ComponentNodeData {
   id: string;
   type: string;
   label: string;
   properties: Record<string, unknown>;
+  simulationStatus?: 'idle' | 'running' | 'fault' | 'stopped';
+  simulationTelemetry?: StreetLightTelemetry | null;
   [key: string]: unknown;
 }
 
@@ -81,18 +84,35 @@ export const ComponentNode: React.FC<NodeProps> = memo(({ data, selected }) => {
     );
   }
 
+  const isRunning = nodeData.simulationStatus === 'running';
+  const telemetry = isRunning ? nodeData.simulationTelemetry : null;
+
   const renderVisual = () => {
     switch (nodeData.type) {
       case 'arduino-uno':
-        return <ArduinoUnoVisual label={nodeData.label} />;
+        return <ArduinoUnoVisual label={nodeData.label} telemetry={telemetry} />;
       case 'esp32':
         return <Esp32Visual label={nodeData.label} />;
       case 'resistor':
         return <ResistorVisual label={nodeData.label} properties={nodeData.properties} />;
       case 'led':
-        return <LedVisual label={nodeData.label} properties={nodeData.properties} />;
+        return (
+          <LedVisual
+            label={nodeData.label}
+            properties={nodeData.properties}
+            isSimulating={isRunning}
+            telemetry={telemetry}
+          />
+        );
       case 'ldr':
-        return <LdrVisual label={nodeData.label} properties={nodeData.properties} />;
+        return (
+          <LdrVisual
+            label={nodeData.label}
+            properties={nodeData.properties}
+            isSimulating={isRunning}
+            telemetry={telemetry}
+          />
+        );
       default:
         return (
           <div style={{ padding: '12px', textAlign: 'center' }}>
@@ -123,7 +143,12 @@ export const ComponentNode: React.FC<NodeProps> = memo(({ data, selected }) => {
 ComponentNode.displayName = 'ComponentNode';
 
 // ---------------- 1. Arduino Uno Visual Representation ----------------
-const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
+const ArduinoUnoVisual: React.FC<{ label: string; telemetry?: StreetLightTelemetry | null }> = ({
+  label,
+  telemetry
+}) => {
+  const isD9Active = telemetry && telemetry.d9Voltage > 0;
+
   const topPins = [
     { id: 'pin-aref', label: 'AREF', color: '#94a3b8' },
     { id: 'pin-gnd-3', label: 'GND', color: '#f59e0b' },
@@ -131,7 +156,11 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
     { id: 'pin-d12', label: '12', color: '#38bdf8' },
     { id: 'pin-d11', label: '~11', color: '#38bdf8' },
     { id: 'pin-d10', label: '~10', color: '#38bdf8' },
-    { id: 'pin-d9', label: '~9', color: '#22d3ee' }, // Highlighted target pin
+    {
+      id: 'pin-d9',
+      label: telemetry ? (isD9Active ? '~9 [5V]' : '~9 [0V]') : '~9',
+      color: isD9Active ? '#10b981' : '#22d3ee'
+    },
     { id: 'pin-d8', label: '8', color: '#38bdf8' },
     { id: 'pin-d7', label: '7', color: '#38bdf8' },
     { id: 'pin-d6', label: '~6', color: '#38bdf8' },
@@ -153,7 +182,11 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
   ];
 
   const bottomAnalogPins = [
-    { id: 'pin-a0', label: 'A0', color: '#34d399' }, // Highlighted target analog
+    {
+      id: 'pin-a0',
+      label: telemetry ? `A0 [${telemetry.adcValue}]` : 'A0',
+      color: telemetry ? '#38bdf8' : '#34d399'
+    },
     { id: 'pin-a1', label: 'A1', color: '#34d399' },
     { id: 'pin-a2', label: 'A2', color: '#34d399' },
     { id: 'pin-a3', label: 'A3', color: '#34d399' },
@@ -214,17 +247,26 @@ const ArduinoUnoVisual: React.FC<{ label: string }> = ({ label }) => {
             Arduino Uno — simplified pin view
           </div>
           <div style={{
-            display: 'inline-block',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
             marginTop: '6px',
-            padding: '3px 12px',
-            background: '#020d18',
-            border: '1px solid #1e3a5f',
+            padding: '3px 10px',
+            background: telemetry ? 'rgba(16, 185, 129, 0.15)' : '#020d18',
+            border: `1px solid ${telemetry ? '#10b981' : '#1e3a5f'}`,
             borderRadius: '4px',
             fontSize: '9px',
             fontFamily: 'var(--font-mono)',
-            color: '#38bdf8'
+            color: telemetry ? '#34d399' : '#38bdf8'
           }}>
-            ATmega328P • 16MHz • 5V
+            {telemetry ? (
+              <>
+                <Activity size={10} color="#34d399" />
+                <span>A0: {telemetry.dividerVoltage.toFixed(2)}V • D9: {isD9Active ? 'HIGH' : 'LOW'}</span>
+              </>
+            ) : (
+              <span>ATmega328P • 16MHz • 5V</span>
+            )}
           </div>
         </div>
 
@@ -433,8 +475,14 @@ const ResistorVisual: React.FC<{ label: string; properties: Record<string, unkno
 };
 
 // ---------------- 4. LED Visual Representation ----------------
-const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }> = ({ label, properties }) => {
-  const color = (properties.color as string) || 'red';
+const LedVisual: React.FC<{
+  label: string;
+  properties: Record<string, unknown>;
+  isSimulating?: boolean;
+  telemetry?: StreetLightTelemetry | null;
+}> = ({ label, properties, isSimulating, telemetry }) => {
+  const color = (properties.color as string) || 'white';
+  const isLit = isSimulating && telemetry ? telemetry.ledState === 'ON' : false;
 
   const colorMap: Record<string, { body: string; border: string; glow: string }> = {
     red: { body: '#ef4444', border: '#b91c1c', glow: 'rgba(239, 68, 68, 0.3)' },
@@ -444,17 +492,20 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
     white: { body: '#f8fafc', border: '#94a3b8', glow: 'rgba(255, 255, 255, 0.4)' }
   };
 
-  const theme = colorMap[color] || colorMap.red;
+  const theme = colorMap[color] || colorMap.white;
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       padding: '10px 16px',
-      background: '#0d131f',
+      background: isLit ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : '#0d131f',
       borderRadius: '6px',
       position: 'relative',
-      minWidth: '170px'
+      minWidth: '175px',
+      border: isLit ? '1px solid rgba(253, 224, 71, 0.5)' : '1px solid transparent',
+      boxShadow: isLit ? '0 0 20px rgba(253, 224, 71, 0.25)' : 'none',
+      transition: 'all 0.2s ease-in-out'
     }}>
       {/* Anode Handle (A / +) on Left */}
       <PinHandle
@@ -469,19 +520,35 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
 
       {/* 5mm LED Dome */}
       <div style={{
-        width: '28px',
-        height: '28px',
-        borderRadius: '50% 50% 2px 2px',
-        background: theme.body,
-        border: `2px solid ${theme.border}`,
-        boxShadow: `0 0 10px ${theme.glow}`,
+        width: '32px',
+        height: '32px',
+        borderRadius: '50% 50% 3px 3px',
+        background: isLit
+          ? '#ffffff'
+          : isSimulating
+          ? 'rgba(100, 116, 139, 0.4)'
+          : theme.body,
+        border: isLit
+          ? '2px solid #fef08a'
+          : `2px solid ${theme.border}`,
+        boxShadow: isLit
+          ? '0 0 25px 8px #ffffff, 0 0 45px 15px rgba(253, 224, 71, 0.8)'
+          : isSimulating
+          ? 'none'
+          : `0 0 10px ${theme.glow}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        opacity: 0.9
+        opacity: isSimulating ? (isLit ? 1.0 : 0.4) : 0.9,
+        transition: 'all 0.2s ease-in-out'
       }}>
-        <div style={{ width: '8px', height: '10px', borderLeft: '1px solid #ffffff', opacity: 0.5 }} />
+        <div style={{
+          width: '8px',
+          height: '10px',
+          borderLeft: isLit ? '2px solid #fef08a' : '1px solid #ffffff',
+          opacity: isLit ? 0.9 : 0.5
+        }} />
       </div>
 
       <div style={{ width: '12px', height: '2px', background: '#94a3b8' }} />
@@ -497,17 +564,49 @@ const LedVisual: React.FC<{ label: string; properties: Record<string, unknown> }
 
       <div style={{ marginLeft: '10px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>{label}</span>
-        <span style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'capitalize' }}>{color} LED</span>
-        <span style={{ fontSize: '9px', color: '#64748b' }}>A(+) / K(-)</span>
+        {isSimulating ? (
+          <>
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                color: isLit ? '#34d399' : '#64748b',
+                marginTop: '1px'
+              }}
+            >
+              {isLit ? '● ON (5.0V)' : '○ OFF (0.0V)'}
+            </span>
+            <span style={{ fontSize: '9px', color: isLit ? '#cbd5e1' : '#475569' }}>
+              {isLit ? `~${telemetry?.ledCurrentMa} mA` : 'Standby'}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'capitalize' }}>
+              {color} LED
+            </span>
+            <span style={{ fontSize: '9px', color: '#64748b' }}>A(+) / K(-)</span>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
 // ---------------- 5. LDR Visual Representation ----------------
-const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }> = ({ label, properties }) => {
+const LdrVisual: React.FC<{
+  label: string;
+  properties: Record<string, unknown>;
+  isSimulating?: boolean;
+  telemetry?: StreetLightTelemetry | null;
+}> = ({ label, properties, isSimulating, telemetry }) => {
   const darkR = properties.darkResistance ? `${Number(properties.darkResistance) / 1000}k` : '100k';
   const brightR = properties.brightResistance ? `${Number(properties.brightResistance) / 1000}k` : '1k';
+
+  // Compute disc background shift based on ambient light
+  const lightPct = isSimulating && telemetry ? telemetry.ambientLight : 20;
+  const discBg = lightPct < 40 ? '#7c2d12' : lightPct < 70 ? '#ea580c' : '#f59e0b';
+  const discBorder = lightPct < 40 ? '#9a3412' : '#fed7aa';
 
   return (
     <div style={{
@@ -517,7 +616,10 @@ const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }
       background: '#0d131f',
       borderRadius: '6px',
       position: 'relative',
-      minWidth: '175px'
+      minWidth: '175px',
+      border: isSimulating ? '1px solid rgba(234, 88, 12, 0.4)' : '1px solid transparent',
+      boxShadow: isSimulating ? '0 0 14px rgba(234, 88, 12, 0.2)' : 'none',
+      transition: 'all 0.2s ease-in-out'
     }}>
       {/* Terminal 1 Handle on Left */}
       <PinHandle
@@ -535,14 +637,15 @@ const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }
         width: '32px',
         height: '32px',
         borderRadius: '50%',
-        background: '#fed7aa',
-        border: '2px solid #ea580c',
+        background: discBg,
+        border: `2px solid ${discBorder}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 0 8px rgba(234, 88, 12, 0.25)'
+        boxShadow: isSimulating ? '0 0 12px rgba(245, 158, 11, 0.4)' : '0 0 8px rgba(234, 88, 12, 0.25)',
+        transition: 'background 0.2s ease-in-out'
       }}>
-        <Zap size={16} color="#c2410c" />
+        <Zap size={16} color="#ffffff" />
       </div>
 
       <div style={{ width: '14px', height: '2px', background: '#94a3b8' }} />
@@ -558,10 +661,23 @@ const LdrVisual: React.FC<{ label: string; properties: Record<string, unknown> }
 
       <div style={{ marginLeft: '10px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>{label}</span>
-        <span style={{ fontSize: '10px', color: '#ea580c' }}>Photoresistor</span>
-        <span style={{ fontSize: '9px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-          {darkR} / {brightR}Ω
-        </span>
+        {isSimulating && telemetry ? (
+          <>
+            <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 600 }}>
+              Light: {telemetry.ambientLight}%
+            </span>
+            <span style={{ fontSize: '9px', color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>
+              R ≈ {telemetry.ldrResistance >= 1000 ? `${(telemetry.ldrResistance / 1000).toFixed(1)}kΩ` : `${telemetry.ldrResistance}Ω`}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: '10px', color: '#ea580c' }}>Photoresistor</span>
+            <span style={{ fontSize: '9px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+              {darkR} / {brightR}Ω
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

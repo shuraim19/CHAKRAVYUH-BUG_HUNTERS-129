@@ -11,7 +11,7 @@ export const INITIAL_MAIN_INO = `/*
 
 const int SENSOR_PIN = A0;   // LDR voltage divider input
 const int LED_PIN = 9;       // Street light control output
-const int THRESHOLD = 500;   // Light trigger threshold (ADC count)
+const int THRESHOLD = 512;   // Light trigger threshold (ADC count, ~50% illumination)
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
@@ -99,11 +99,11 @@ This reference project implements an intelligent, energy-saving Automatic Street
 4. **Actuator**: High-brightness street LED connected from digital output **D9** via a 220 Ω current-limiting resistor to GND
 
 ### Operational Logic:
-- In daylight, LDR resistance is low (~1 kΩ), raising the A0 divider voltage (ADC > 500). The street lamp remains **OFF**.
-- In darkness, LDR resistance surges to ~100 kΩ, pulling A0 low (ADC < 500). Pin D9 goes **HIGH**, switching the lamp **ON**.
+- In daylight, LDR resistance is low (~1 kΩ), raising the A0 divider voltage (ADC >= 512). The street lamp remains **OFF**.
+- In darkness, LDR resistance surges to ~100 kΩ, pulling A0 low (ADC < 512). Pin D9 goes **HIGH**, switching the lamp **ON**.
 
-> **Phase 1 IDE Notice:**
-> The source code editor and file management are fully active. Interactive component placement, breadboard wiring, and sensor simulation will be unlocked in subsequent challenge phases.
+> **Phase 4 Functional Simulation Active:**
+> Interactive circuit simulation is now live! Use the **Run**, **Stop**, and **Reset** toolbar controls or the interactive Ambient Light slider on the workbench canvas to simulate varying daylight levels and inspect real-time ADC conversion, pin voltages, and LED illumination.
 `;
 
 export function createInitialProject(): Project {

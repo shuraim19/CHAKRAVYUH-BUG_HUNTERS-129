@@ -24,6 +24,13 @@ import { isDuplicateWire } from '../domain/circuit/netlist';
 import { validateCircuit } from '../domain/circuit/validate';
 import { validateStreetLightTopology } from '../domain/circuit/streetLightTopology';
 import { GeneralValidationResult, StreetLightValidationResult } from '../domain/circuit/types';
+import {
+  SimulationStatus,
+  StreetLightInputs,
+  StreetLightTelemetry,
+  evaluateStreetLightSimulation,
+  DEFAULT_THRESHOLD
+} from '../domain/simulation';
 import { ChatMessage, CodeProposal } from '../lib/assistant-client';
 
 export type BottomTab = 'output' | 'problems' | 'serial';
@@ -62,6 +69,12 @@ export interface ProjectState {
     errorCount: number;
     warningCount: number;
   };
+
+  // Simulation State (Phase 4)
+  simulationStatus: SimulationStatus;
+  simulationInputs: StreetLightInputs;
+  simulationTelemetry: StreetLightTelemetry | null;
+  simulationFault: Diagnostic | null;
 
   // Assistant State
   assistantMessages: ChatMessage[];
@@ -129,6 +142,13 @@ export interface ProjectState {
   applyProposal: (proposal: CodeProposal) => { success: boolean; error?: string };
   rejectProposal: (proposalId: string) => void;
   undoProposal: () => { success: boolean; error?: string };
+
+  // Simulation Actions (Phase 4)
+  startSimulation: () => { success: boolean; error?: string };
+  stopSimulation: () => void;
+  resetSimulation: () => void;
+  setAmbientLight: (lightPercentage: number) => void;
+  setSimulationThreshold: (threshold: number) => void;
 }
 
 /**
@@ -168,6 +188,55 @@ function syncGeneratedJsonFiles(files: ProjectFile[], circuit: Circuit): Project
   });
 }
 
+/**
+ * Automatically re-evaluates the functional simulation when circuit topology is edited
+ * while simulation is in 'running' or 'fault' state.
+ */
+function reevaluateSimulationIfActive(
+  get: () => ProjectState,
+  set: (partial: Partial<ProjectState> | ((state: ProjectState) => Partial<ProjectState>)) => void
+) {
+  const state = get();
+  if (state.simulationStatus === 'running' || state.simulationStatus === 'fault') {
+    const result = evaluateStreetLightSimulation(state.project.circuit, state.simulationInputs);
+    if (!result.valid) {
+      const prevStatus = state.simulationStatus;
+      set({
+        simulationStatus: 'fault',
+        simulationFault: result.faultDiagnostic || null,
+        simulationTelemetry: state.simulationTelemetry
+          ? {
+              ...state.simulationTelemetry,
+              ledState: 'OFF',
+              d9Voltage: 0.0,
+              ledCurrentMa: 0.0,
+              statusText: `FAULT: ${result.faultDiagnostic?.message || 'Circuit broken'}`
+            }
+          : null
+      });
+      if (prevStatus === 'running') {
+        state.addLog(
+          'error',
+          `[SIMULATION FAULT] Wiring broken: ${result.faultDiagnostic?.message || 'Circuit broken'}. Simulation suspended; LED turned OFF.`
+        );
+      }
+    } else {
+      const wasFault = state.simulationStatus === 'fault';
+      set({
+        simulationStatus: 'running',
+        simulationFault: null,
+        simulationTelemetry: result.telemetry
+      });
+      if (wasFault) {
+        state.addLog(
+          'info',
+          `[SIMULATION RESTORED] Wiring repaired. Reference topology valid. Resuming simulation.`
+        );
+      }
+    }
+  }
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: createInitialProject(),
   openTabIds: ['file-main-ino', 'file-readme-md'],
@@ -201,6 +270,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     warningCount: 0
   },
 
+  // Simulation state (Phase 4)
+  simulationStatus: 'idle',
+  simulationInputs: {
+    ambientLight: 20,
+    threshold: DEFAULT_THRESHOLD
+  },
+  simulationTelemetry: null,
+  simulationFault: null,
+
   // Assistant state
   assistantMessages: [],
   activeProposal: null,
@@ -219,6 +297,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       openTabIds: initialTab ? [initialTab] : [],
       activeTabId: initialTab,
       saveStatus: 'saved',
+      simulationStatus: 'idle',
+      simulationInputs: {
+        ambientLight: 20,
+        threshold: DEFAULT_THRESHOLD
+      },
+      simulationTelemetry: null,
+      simulationFault: null,
       assistantMessages: [],
       activeProposal: null,
       lastUndoProposal: null,
@@ -472,6 +557,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         errorCount: 0,
         warningCount: 0
       },
+      simulationStatus: 'idle',
+      simulationInputs: {
+        ambientLight: 20,
+        threshold: DEFAULT_THRESHOLD
+      },
+      simulationTelemetry: null,
+      simulationFault: null,
       assistantMessages: [],
       activeProposal: null,
       lastUndoProposal: null
@@ -512,6 +604,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         errorCount: 0,
         warningCount: 0
       },
+      simulationStatus: 'idle',
+      simulationInputs: {
+        ambientLight: 20,
+        threshold: DEFAULT_THRESHOLD
+      },
+      simulationTelemetry: null,
+      simulationFault: null,
       assistantMessages: [],
       activeProposal: null,
       lastUndoProposal: null
@@ -609,6 +708,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
 
     get().addLog('info', `Placed ${label} (${def.name}) on the workbench.`);
+    reevaluateSimulationIfActive(get, set);
     return newInstance;
   },
 
@@ -705,6 +805,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
 
     get().addLog('info', `Updated properties for ${finalLabel}.`);
+    reevaluateSimulationIfActive(get, set);
     return { success: true };
   },
 
@@ -739,6 +840,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
 
     get().addLog('warn', `Removed ${target.label} and cleaned up attached wires.`);
+    reevaluateSimulationIfActive(get, set);
   },
 
   selectComponent: (id: string | null) => {
@@ -809,6 +911,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const pinBLabel = defB?.pins.find(p => p.id === endpointB.pinId)?.label || endpointB.pinId;
 
     get().addLog('info', `Connected ${compA.label} [${pinALabel}] <-> ${compB.label} [${pinBLabel}].`);
+    reevaluateSimulationIfActive(get, set);
     return { success: true, wireId: newWireId };
   },
 
@@ -838,6 +941,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
 
     get().addLog('warn', `Removed wire connection.`);
+    reevaluateSimulationIfActive(get, set);
   },
 
   updateWireColour: (wireId: string, colour: string) => {
@@ -1020,6 +1124,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       selectedComponentId: null,
       selectedWireId: null,
       saveStatus: 'unsaved',
+      simulationStatus: 'idle',
+      simulationInputs: {
+        ambientLight: 20,
+        threshold: DEFAULT_THRESHOLD
+      },
+      simulationTelemetry: null,
+      simulationFault: null,
       diagnostics: []
     });
 
@@ -1058,6 +1169,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       selectedComponentId: null,
       selectedWireId: null,
       saveStatus: 'unsaved',
+      simulationStatus: 'idle',
+      simulationTelemetry: null,
+      simulationFault: null,
       diagnostics: []
     });
 
@@ -1183,5 +1297,131 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     get().addLog('info', 'Reverted Gemini code proposal to prior version.');
     return { success: true };
+  },
+
+  // ---------------- Functional Simulation Engine (Phase 4) ----------------
+
+  startSimulation: () => {
+    const { project, simulationInputs, addLog } = get();
+
+    // 1. Run full validation (netlist & topology)
+    get().runValidation();
+    const evaluation = evaluateStreetLightSimulation(project.circuit, simulationInputs);
+
+    if (!evaluation.valid) {
+      const faultMsg = evaluation.faultDiagnostic?.message || 'Automatic Street Light circuit is incomplete or misconfigured.';
+      set({
+        simulationStatus: 'fault',
+        simulationFault: evaluation.faultDiagnostic || null,
+        activeBottomTab: 'problems'
+      });
+      addLog('error', `[SIMULATION BLOCKED] Cannot start simulation: ${faultMsg}`);
+      return { success: false, error: faultMsg };
+    }
+
+    set({
+      simulationStatus: 'running',
+      simulationFault: null,
+      simulationTelemetry: evaluation.telemetry,
+      activeBottomTab: 'output'
+    });
+
+    addLog('info', '[SIMULATION] Functional electronics simulation started.');
+    addLog('info', '[SIMULATION] Reference topology validated: Arduino Uno R3, LDR on A0 with 10 kΩ pull-down, LED on D9 with 220 Ω limiter.');
+    addLog(
+      'info',
+      `[SIMULATION] Ambient Light: ${evaluation.telemetry!.ambientLight}% -> R_LDR ≈ ${(evaluation.telemetry!.ldrResistance / 1000).toFixed(1)} kΩ -> A0 = ${evaluation.telemetry!.dividerVoltage.toFixed(2)} V (ADC ${evaluation.telemetry!.adcValue}) -> LED is ${evaluation.telemetry!.ledState}.`
+    );
+
+    return { success: true };
+  },
+
+  stopSimulation: () => {
+    const { simulationTelemetry, addLog } = get();
+    set({
+      simulationStatus: 'stopped',
+      simulationTelemetry: simulationTelemetry
+        ? {
+            ...simulationTelemetry,
+            ledState: 'OFF',
+            d9Voltage: 0.0,
+            ledCurrentMa: 0.0,
+            statusText: 'STOPPED — Outputs inactive'
+          }
+        : null
+    });
+    addLog('info', '[SIMULATION] Simulation stopped. Actuator outputs set to inactive (LED OFF). Circuit design preserved.');
+  },
+
+  resetSimulation: () => {
+    const defaultInputs: StreetLightInputs = {
+      ambientLight: 20,
+      threshold: DEFAULT_THRESHOLD
+    };
+    const { simulationStatus, project, addLog } = get();
+
+    if (simulationStatus === 'running') {
+      const evaluation = evaluateStreetLightSimulation(project.circuit, defaultInputs);
+      set({
+        simulationInputs: defaultInputs,
+        simulationTelemetry: evaluation.valid ? evaluation.telemetry : null
+      });
+    } else {
+      set({
+        simulationInputs: defaultInputs
+      });
+    }
+    addLog('info', `[SIMULATION] Simulation parameters reset to factory defaults (Ambient Light: 20%, Threshold: ${DEFAULT_THRESHOLD}).`);
+  },
+
+  setAmbientLight: (lightPercentage: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(lightPercentage)));
+    const { simulationStatus, simulationInputs, simulationTelemetry, project, addLog } = get();
+    const updatedInputs: StreetLightInputs = { ...simulationInputs, ambientLight: clamped };
+
+    set({ simulationInputs: updatedInputs });
+
+    if (simulationStatus === 'running') {
+      const evaluation = evaluateStreetLightSimulation(project.circuit, updatedInputs);
+      if (evaluation.valid && evaluation.telemetry) {
+        const prevLedState = simulationTelemetry?.ledState;
+        const newLedState = evaluation.telemetry.ledState;
+
+        set({ simulationTelemetry: evaluation.telemetry });
+
+        // Log threshold crossing or state toggle
+        if (prevLedState && prevLedState !== newLedState) {
+          addLog(
+            'info',
+            `[SIMULATION] Ambient light adjusted to ${clamped}% (${clamped < 50 ? 'Darkness' : 'Daylight'}). ADC ${evaluation.telemetry.adcValue} ${evaluation.telemetry.isDark ? '<' : '>='} ${evaluation.telemetry.threshold} -> Street Lamp turned ${newLedState}.`
+          );
+        }
+      }
+    }
+  },
+
+  setSimulationThreshold: (threshold: number) => {
+    const clamped = Math.max(0, Math.min(1023, Math.round(threshold)));
+    const { simulationStatus, simulationInputs, simulationTelemetry, project, addLog } = get();
+    const updatedInputs: StreetLightInputs = { ...simulationInputs, threshold: clamped };
+
+    set({ simulationInputs: updatedInputs });
+
+    if (simulationStatus === 'running') {
+      const evaluation = evaluateStreetLightSimulation(project.circuit, updatedInputs);
+      if (evaluation.valid && evaluation.telemetry) {
+        const prevLedState = simulationTelemetry?.ledState;
+        const newLedState = evaluation.telemetry.ledState;
+
+        set({ simulationTelemetry: evaluation.telemetry });
+
+        if (prevLedState && prevLedState !== newLedState) {
+          addLog(
+            'info',
+            `[SIMULATION] Darkness threshold adjusted to ${clamped}. ADC ${evaluation.telemetry.adcValue} ${evaluation.telemetry.isDark ? '<' : '>='} ${clamped} -> Street Lamp turned ${newLedState}.`
+          );
+        }
+      }
+    }
   }
 }));
