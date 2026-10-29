@@ -10,9 +10,9 @@
 
 | Phase | Milestone | Priority | Status |
 |---|---|---|---|
-| **Phase 1** | Foundation & IDE Interface (Explorer, Monaco Editor, Local Saving) | P0 | **Implemented** |
-| **Phase 2** | Component Registry & Interactive Electronics Workbench | P0 | Queued (Next) |
-| **Phase 3** | Pin-to-Pin Wiring Net Graph & Electrical Validation Engine | P0 | Deferred to Phase 3 |
+| **Phase 1** | Foundation & IDE Interface (Explorer, Monaco Editor, Local Saving) | P0 | **Implemented & Verified** |
+| **Phase 2** | Component Registry & Interactive Electronics Workbench | P0 | **Implemented & Verified** |
+| **Phase 3** | Pin-to-Pin Wiring Net Graph & Electrical Validation Engine | P0 | Queued (Next) |
 | **Phase 4** | Functional Automatic Street Light Experiment Simulation | P0 | Deferred to Phase 4 |
 | **Phase 5** | Reliable Multi-Project Persistence & Export (JSON/ZIP) | P0 | Deferred to Phase 5 |
 | **Phase 6** | Gemini Engineering Assistant & Reviewed Project Proposals | P1 | Deferred to Phase 6 |
@@ -20,61 +20,60 @@
 
 ---
 
-## Phase 1 Deliverables
+## Phase 2 Deliverables (Component Registry & Workbench)
 
 ### Implemented
-- [x] **Repository & Workspace Setup**: Root React + TypeScript + Vite 6 project without nested directories, preserving Git history and moderator access.
-- [x] **Dark Navy & Cyan Engineering Theme**: Custom CSS design system with custom scrollbars, typography (JetBrains Mono + Plus Jakarta Sans), and responsive layout.
-- [x] **Three-Panel IDE Layout**:
-  - Left (~30%): Project Explorer with collapsible file tree, file creation, renaming, deletion, protected files guard, and integrated Monaco editor.
-  - Centre (~45%): Electronics Workbench canvas with dotted grid background and explicit Phase 1 empty state.
-  - Right (~25%): Gemini Engineering Assistant panel in truthful "Not connected" state with disabled inputs.
-- [x] **Top Toolbar**:
-  - ProtoForge AI branding and BUG HUNTERS team badge.
-  - Inline project rename with validation (disallows empty names).
-  - New Project action with dirty-state confirmation dialog.
-  - Save button with Ctrl/Cmd+S hotkey support and real-time status pill (Saved, Unsaved changes, Saving, Save failed).
-  - Disabled controls for Validate, Run, Stop, Reset with accessible explanations ("Available after the simulation phase").
-- [x] **Bottom Panel**:
-  - Resizable and collapsible bottom dock with draggable handle.
-  - **Output Tab**: Live event log (initialization, saves, file operations).
-  - **Problems Tab**: Active JSON syntax validation for configuration files with notice on future circuit checks.
-  - **Serial Tab**: Truthful message ("No firmware runtime connected. Serial monitor stream will activate in Phase 4").
-- [x] **Monaco Code Editor**:
-  - Bundled local web workers (editor, json, ts) with zero external CDN dependency.
-  - Custom `protoforge-dark` theme.
-  - Tab switcher with active indicators, dirty dots, and close buttons.
-  - Automatic language detection (C++ for `.ino`/`.cpp`/`.h`, JSON for `.json`, Markdown for `.md`, plaintext).
-  - Draft mode for JSON files without crashing or corrupting authoritative project state.
-  - Container auto-resize support.
-- [x] **Domain Schema & Validation (Zod)**:
-  - Strong Zod schemas for `Project`, `ProjectFile`, `ComponentInstance`, `Wire`, `Diagnostic`, `SimulationConfig`.
-  - Strict path validator rejecting directory traversal (`..`), absolute paths, invalid characters, and duplicate names.
-  - Protection for core project files (`main.ino`, `circuit.json`, `components.json`, `project.json`, `README.md`).
-- [x] **Local Persistence**:
-  - Schema-versioned storage (`protoforge.project.v1`).
-  - Safe quota handling and corrupt data preservation with timestamped backup keys.
-  - Recovery modal offering fresh project creation if local data is corrupted.
+- [x] **Component Registry (`src/domain/components/registry.ts`)**:
+  - Registered 5 placeable visual components: Arduino Uno R3, ESP32 DevKit, Resistor, LED, and Photoresistor (LDR).
+  - Registered 14 extensible catalog-only components: Push button, Potentiometer, Ceramic capacitor, Temperature sensor, Ultrasonic sensor, Soil moisture sensor, Piezo buzzer, Relay module, DC motor, Servo, LCD 16x2, OLED SSD1306, Breadboard, and DC power supply.
+  - Distinct separation of `isPlaceable` from functional simulation support.
+- [x] **Component Palette (`src/features/workbench/ComponentPalette.tsx`)**:
+  - Collapsible drawer within centre workbench region.
+  - Real-time search across names, categories, descriptions, and keywords.
+  - Category filtering (`Boards`, `Passive components`, `Sensors`, `Outputs`, `Displays`, `Power and interconnects`).
+  - Empty search state with clear filter reset.
+  - Dual placement: Drag-and-drop onto the infinite canvas and click-to-place "+ Add" button with staggered centering.
+  - Disabled Add controls for catalog-only entries with clear educational tooltip.
+- [x] **Interactive Workbench Canvas (`@xyflow/react`)**:
+  - High-fidelity custom node visual components (`src/features/workbench/ComponentNode.tsx`):
+    - **Arduino Uno**: Recognisable blue PCB, ATmega328P DIP chip, labeled digital header (D0/RX to D13/LED, AREF, GND) and power/analog header (5V, 3V3, GND, VIN, RESET, A0–A5).
+    - **ESP32 DevKit**: Dark matte PCB with ESP-WROOM-32 RF shield, exposed documented subset pins (3V3, GND, GPIO18, 19, 21, 22, 23, 34 Input-only) and "Visual Only" badge.
+    - **Resistor**: Axial beige resistor body with color bands and live displayed resistance value.
+    - **LED**: 5mm LED dome illustration with configurable colors (red, green, blue, yellow) and polarized leads (Anode A/+ and Cathode K/-).
+    - **LDR**: Ceramic disc with serpentine CdS track pattern, showing dark/bright resistance parameters.
+  - Dotted engineering grid background.
+  - Canvas pan, zoom in/out, fit-view controls, and live component counter.
+  - Pin terminals rendered with wide pointer hit areas and connections safely disabled (`isConnectable={false}`) with clear notice: *"Component placement is active. Electrical wiring arrives in Phase 3."*
+- [x] **Properties Inspector (`src/features/workbench/PropertiesInspector.tsx`)**:
+  - Collapsible inspector drawer showing active component name, status, and pinout list with roles.
+  - Validated property editing:
+    - **Resistor**: Live numerical resistance editing + unit selector, with instant presets (220 Ω, 1 kΩ, 10 kΩ).
+    - **LED**: Color picker (red, green, blue, yellow) and label editor.
+    - **LDR**: Configurable dark and bright resistance values with strict inequality validation (`dark > bright > 0`).
+    - **Arduino / ESP32**: Informational board specifications (clock frequency, operating voltage) protected from arbitrary alteration.
+  - Safe error display: Rejects `NaN`, negative, empty, or duplicate labels without corrupting state.
+- [x] **Authoritative State & Storage Synchronisation**:
+  - Component instances managed in Zustand store with unique stable IDs and independent default properties.
+  - Moving, placing, editing properties, or deleting components marks project unsaved. Selection changes do not mark dirty.
+  - Automatically regenerates `circuit.json` and `components.json` to match the canonical workbench.
+  - Safe keyboard delete: Delete/Backspace keys only remove components when canvas has focus (never deletes while typing in Monaco, filename inputs, or property fields).
+  - LocalStorage persistence saves all placed components, labels, coordinates, and properties.
 
 ### Verified
-- [x] Unit test suite (`src/domain/project/schema.test.ts`): 10/10 tests passing.
-  - Path traversal rejection.
-  - Absolute path rejection.
-  - Invalid character checks.
-  - Duplicate path rejection.
-  - Core protected files enforcement.
-  - Language detection.
-  - Project schema parsing.
+- [x] Vitest test suite (`src/domain/components/registry.test.ts` & `src/store/projectStore.test.ts`): 22/22 tests passing.
+  - Placeables vs catalog-only integrity.
+  - Independent label generation (`R1`, `R2`, `LED1`, `U1`).
+  - Strict validation of resistor values (positive finite, rejects NaN/negatives).
+  - Strict validation of LDR inequality constraints.
+  - Component placement, independent instance mutation, deletion, and duplicate label prevention.
 - [x] TypeScript compilation: zero errors (`tsc --noEmit`).
 - [x] Production build: Vite bundle generated in `dist/`.
-- [x] Local development server launch verification.
+- [x] Dev server active at `http://localhost:5173/`.
 
 ### Unverified (Pending Browser Subagent / Manual Run)
-- [ ] End-to-end interactive Monaco typing and focus retention in running browser session.
-- [ ] Mobile screen drag handles on physical touch devices.
+- [ ] End-to-end touch gestures on physical mobile devices.
 
-### Deferred (Explicit Non-Goals for Phase 1)
-- Component drag-and-drop placement (Phase 2).
+### Deferred (Explicit Non-Goals for Phase 2)
 - Pin-to-pin wiring net graph (Phase 3).
 - Street light sensor simulation & analog divider math (Phase 4).
 - ZIP export and multi-project manager (Phase 5).

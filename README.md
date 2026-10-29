@@ -4,50 +4,57 @@
 > **Team:** BUG HUNTERS  
 > **Target Deployment:** Vercel  
 
-ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It combines code editing, interactive circuit workbench simulation, and AI-assisted engineering guidance into a unified development environment.
+ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It integrates code editing, interactive circuit workbench simulation, and AI-assisted engineering guidance into a unified development environment.
 
 ---
 
-## Phase 1 Implementation Summary
+## Current Status: Phase 2 Implemented (Workbench & Component Registry)
 
-Phase 1 establishes the foundational engineering IDE:
-- **Three-Panel Layout**:
-  - **Left (~30%)**: Project Explorer with file tree and integrated Monaco code editor with file tabs.
-  - **Centre (~45%)**: Electronics Workbench canvas with dark dotted engineering grid and Phase 1 state notice.
-  - **Right (~25%)**: Gemini Engineering Assistant panel in truthful "Not connected" status with disabled controls.
-- **Top Bar**:
-  - Branding and BUG HUNTERS attribution.
-  - Editable project name with non-empty validation.
-  - Project actions: Save (with `Ctrl+S` / `Cmd+S`), New Project (with unsaved changes guard).
-  - Status indicator (Saved, Unsaved changes, Saving, Save failed).
-  - Explicitly disabled simulation controls (Validate, Run, Stop, Reset) with explanations.
-- **Bottom Dock**:
-  - Resizable and collapsible dock with Output, Problems, and Serial monitor tabs.
-  - Live log tracking real user and project actions.
-  - Real-time JSON draft syntax verification.
-  - Explicit notification that serial stream activates with simulation.
-- **Monaco Code Editor**:
-  - Bundled local web workers without CDN dependencies.
-  - Syntax highlighting for C++ (`.ino`, `.cpp`, `.h`), JSON, and Markdown.
-  - Automatic language detection, dirty indicators, and non-blocking edits.
-- **File Management**:
-  - Create, rename, delete files with full path safety (rejects directory traversal, absolute paths, illegal characters, and duplicates).
-  - Protection for core project metadata files (`main.ino`, `circuit.json`, `components.json`, `project.json`, `README.md`).
-- **Local Persistence**:
-  - Namespaced versioned storage (`protoforge.project.v1`).
-  - Zod schema validation on save and load.
-  - Corruption safeguard that preserves timestamped backups and offers recovery.
+- **Phase 1 (Foundation & Monaco IDE)**: Completed & verified.
+- **Phase 2 (Component Registry & Electronics Workbench)**: Completed & verified.
+- **Phase 3 (Pin-to-Pin Wiring Net Graph & Electrical Validation)**: Queued next.
 
 ---
 
-## Technology Stack
+## Phase 2 Highlights
 
-- **Framework**: React 18, Vite 6, TypeScript 5
-- **State Management**: Zustand
-- **Schema & Validation**: Zod
-- **Editor**: Monaco Editor (bundled local web workers)
-- **Icons**: Lucide React
-- **Testing**: Vitest
+1. **Interactive Electronics Workbench**:
+   - Built on `@xyflow/react` with custom high-fidelity component nodes.
+   - Dotted engineering grid with smooth panning, zooming, and fit-view controls.
+   - Dual placement: Drag-and-drop from the palette or click the "+ Add" button with staggered positioning.
+   - Visual terminal pins with large pointer targets and connections temporarily disabled with clear feedback (*"Component placement is active. Electrical wiring arrives in Phase 3."*).
+
+2. **Extensible Component Registry**:
+   - **Arduino Uno R3**: Original blue PCB illustration, ATmega328P DIP chip, digital header (D0/RX to D13, AREF, GND), and analog/power header (5V, 3V3, GND, VIN, RESET, A0–A5).
+   - **ESP32 DevKit**: Dark development-board view with ESP-WROOM-32 RF shield, exposed subset pins (3V3, GND, GPIO18–23, GPIO34 input-only), and visual-only badge.
+   - **Resistor**: Axial beige body with live value display and convenient presets (220 Ω, 1 kΩ, 10 kΩ).
+   - **LED**: Polarized 5mm dome with configurable colors (red, green, blue, yellow) and Anode (+)/Cathode (−) terminals.
+   - **Photoresistor (LDR)**: Ceramic sensor disc with CdS serpentine pattern and configurable dark/bright resistance.
+   - **14 Catalog-Only Discovery Items**: Push buttons, potentiometers, sensors (temperature, ultrasonic, soil moisture), actuators (relays, motors, servos, buzzers), and displays (LCD, OLED).
+
+3. **Properties Inspector**:
+   - Inspects placed components, instance labels, and terminal pinouts with electrical roles.
+   - Validated property editing with inline error messages (rejects negative numbers, `NaN`, and empty labels).
+   - Independent component instances: modifying one resistor does not mutate another.
+
+4. **Keyboard & Interaction Safety**:
+   - `Delete`/`Backspace` keys only remove selected components when the canvas is focused.
+   - Keystrokes in Monaco, filename inputs, and property fields are never intercepted.
+
+---
+
+## Walkthrough: Setting Up the Automatic Street Light Components
+
+To prepare the workbench for the reference Automatic Street Light experiment:
+1. Open the **Component Library** palette on the left side of the workbench.
+2. Click **Add** next to **Arduino Uno R3** (or drag it onto the canvas). Notice label `U1` is assigned.
+3. Click **Add** next to **Photoresistor (LDR)**. Notice label `LDR1` is assigned.
+4. Click **Add** next to **Resistor**. Notice label `R1` (default 220 Ω) is placed.
+5. In the **Properties Inspector** for `R1`, click the **10 kΩ (Divider)** preset. It updates to 10,000 Ω.
+6. Click **Add** next to **Resistor** again. Notice label `R2` is placed and retains its default 220 Ω.
+7. Click **Add** next to **LED (Light Emitting Diode)**. Notice label `LED1` is placed.
+8. Drag the components to arrange them clearly on the dotted workbench grid.
+9. Click **Save** in the top bar (or press `Ctrl+S`). Refresh the browser to verify that all components, positions, and properties are preserved.
 
 ---
 
@@ -66,7 +73,7 @@ npm install
 ```bash
 npm run dev
 ```
-Open `http://localhost:5173` in your browser.
+Open **`http://localhost:5173`** in your browser.
 
 ### Running Tests
 ```bash
@@ -80,15 +87,6 @@ npm run build
 
 ---
 
-## Honest Limitations in Phase 1
-
-- **No Component Placement Yet**: The workbench canvas is prepared with its dotted engineering grid; interactive placement arrives in Phase 2.
-- **No Pin-to-Pin Wiring**: Electrical net graph validation arrives in Phase 3.
-- **No Firmware Emulation**: The editor edits actual code, but arbitrary MCU emulation is not running; reference mathematical simulation arrives in Phase 4.
-- **AI Assistant Offline**: Gemini assistant UI is present with truthful "Not connected" status; secure server-side proxy arrives in Phase 6.
-
----
-
 ## Project Structure
 
 ```
@@ -99,23 +97,34 @@ npm run build
 │   │   ├── IdeShell.tsx            # 3-panel split layout with resizers
 │   │   ├── TopToolbar.tsx          # Branding, actions, and status
 │   │   └── BottomPanel.tsx         # Output, Problems, Serial tabs
-│   ├── domain/project/
-│   │   ├── schema.ts               # Zod domain models & path validators
-│   │   ├── schema.test.ts          # Vitest test suite
-│   │   └── initialProject.ts       # Starter files for Automatic Street Light
+│   ├── domain/
+│   │   ├── components/
+│   │   │   ├── types.ts            # Component definitions & categories
+│   │   │   ├── schemas.ts          # Zod property validation schemas
+│   │   │   ├── registry.ts         # Registry of placeable and catalog items
+│   │   │   └── registry.test.ts    # Unit tests for components & schemas
+│   │   └── project/
+│   │       ├── schema.ts           # Authoritative project schema
+│   │       ├── schema.test.ts      # Path sanitization & schema tests
+│   │       └── initialProject.ts   # Street light starter project
 │   ├── features/
 │   │   ├── files/
 │   │   │   ├── FileExplorer.tsx    # Project explorer & file operations
 │   │   │   └── CodeEditor.tsx      # Monaco editor & tab manager
 │   │   ├── workbench/
-│   │   │   └── WorkbenchPanel.tsx  # Electronics workbench canvas
+│   │   │   ├── WorkbenchPanel.tsx  # React Flow interactive canvas
+│   │   │   ├── ComponentPalette.tsx# Searchable component library
+│   │   │   ├── ComponentNode.tsx   # Custom SVG/CSS component nodes
+│   │   │   ├── PropertiesInspector.tsx # Validated properties drawer
+│   │   │   └── WorkbenchToolbar.tsx# Pan/zoom controls & component counter
 │   │   └── assistant/
 │   │       └── AssistantPanel.tsx  # Gemini assistant placeholder
 │   ├── lib/
 │   │   ├── monaco.ts               # Monaco bundled workers & theme
 │   │   └── persistence.ts          # LocalStorage persistence manager
 │   ├── store/
-│   │   └── projectStore.ts         # Authoritative Zustand state store
+│   │   ├── projectStore.ts         # Authoritative Zustand state store
+│   │   └── projectStore.test.ts    # Store integration tests
 │   ├── styles/
 │   │   ├── theme.css               # Color tokens & dark navy palette
 │   │   └── index.css               # IDE layout & component styles

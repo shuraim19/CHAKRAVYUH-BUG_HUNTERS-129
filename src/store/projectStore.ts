@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import {
   Project,
   ProjectFile,
+  ComponentInstance,
+  Circuit,
   Diagnostic,
   detectLanguage,
   validateFilePath,
@@ -13,6 +15,10 @@ import {
   loadProjectFromStorage,
   clearProjectStorage
 } from '../lib/persistence';
+import {
+  getComponentDefinition,
+  generateNextInstanceLabel
+} from '../domain/components/registry';
 
 export type BottomTab = 'output' | 'problems' | 'serial';
 export type MobileTab = 'files' | 'workbench' | 'assistant';
@@ -39,6 +45,11 @@ export interface ProjectState {
   diagnostics: Diagnostic[];
   corruptNotice: { rawData: string; error: string } | null;
 
+  // Phase 2 Workbench State
+  selectedComponentId: string | null;
+  isPaletteOpen: boolean;
+  isInspectorOpen: boolean;
+
   // Actions
   initialize: () => void;
   setProjectName: (name: string) => { success: boolean; error?: string };
@@ -58,6 +69,57 @@ export interface ProjectState {
   setActiveMobileTab: (tab: MobileTab) => void;
   addLog: (level: LogEntry['level'], message: string) => void;
   clearLogs: () => void;
+
+  // Workbench Actions
+  addComponent: (type: string, position?: { x: number; y: number }) => ComponentInstance | null;
+  updateComponentPosition: (id: string, position: { x: number; y: number }) => void;
+  updateComponentProperties: (
+    id: string,
+    properties: Record<string, unknown>,
+    newLabel?: string
+  ) => { success: boolean; error?: string };
+  deleteComponent: (id: string) => void;
+  selectComponent: (id: string | null) => void;
+  setPaletteOpen: (open: boolean) => void;
+  setInspectorOpen: (open: boolean) => void;
+  clearWorkbench: () => void;
+}
+
+/**
+ * Regenerate circuit.json and components.json to reflect authoritative circuit state.
+ */
+function syncGeneratedJsonFiles(files: ProjectFile[], circuit: Circuit): ProjectFile[] {
+  const circuitJsonStr = JSON.stringify(
+    {
+      schemaVersion: 1,
+      description: 'Workbench circuit configuration for Automatic Street Light',
+      components: circuit.components,
+      wires: circuit.wires
+    },
+    null,
+    2
+  );
+
+  const componentsJsonStr = JSON.stringify(
+    circuit.components.map(c => ({
+      id: c.id,
+      type: c.type,
+      label: c.label,
+      properties: c.properties
+    })),
+    null,
+    2
+  );
+
+  return files.map(file => {
+    if (file.path === 'circuit.json') {
+      return { ...file, content: circuitJsonStr };
+    }
+    if (file.path === 'components.json') {
+      return { ...file, content: componentsJsonStr };
+    }
+    return file;
+  });
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -82,6 +144,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   diagnostics: [],
   corruptNotice: null,
 
+  // Workbench UI state
+  selectedComponentId: null,
+  isPaletteOpen: true,
+  isInspectorOpen: true,
+
   initialize: () => {
     const loaded = loadProjectFromStorage();
     if (loaded.status === 'found') {
@@ -98,7 +165,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             id: `log-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
             level: 'info',
-            message: `Restored saved project "${p.name}" (Revision ${p.revision}) from local storage.`
+            message: `Restored saved project "${p.name}" (${p.circuit.components.length} components) from local storage.`
           }
         ]
       });
@@ -378,7 +445,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       saveStatus: 'saved',
       saveError: null,
       corruptNotice: null,
-      diagnostics: []
+      diagnostics: [],
+      selectedComponentId: null
     });
 
     get().addLog('info', 'Created new Automatic Street Light project.');
@@ -413,11 +481,238 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       message
     };
     set(state => ({
-      logs: [...state.logs.slice(-199), entry] // keep last 200 logs
+      logs: [...state.logs.slice(-199), entry]
     }));
   },
 
   clearLogs: () => {
     set({ logs: [] });
+  },
+
+  // ---------------- Workbench Actions (Phase 2) ----------------
+
+  addComponent: (type: string, position?: { x: number; y: number }) => {
+    const def = getComponentDefinition(type);
+    if (!def) {
+      get().addLog('error', `Unknown component type: "${type}".`);
+      return null;
+    }
+
+    if (!def.isPlaceable) {
+      get().addLog('warn', `${def.name} is a catalog-only component. Placement arrives in a future phase.`);
+      return null;
+    }
+
+    const { project } = get();
+    const existingLabels = project.circuit.components.map(c => c.label);
+    const label = generateNextInstanceLabel(type, existingLabels);
+    const newId = `comp-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+    // Default position with dynamic staggering
+    const compCount = project.circuit.components.length;
+    const pos = position || {
+      x: 180 + (compCount % 5) * 40,
+      y: 120 + (compCount % 5) * 35
+    };
+
+    // Deep clone default properties to guarantee independence
+    const properties = JSON.parse(JSON.stringify(def.defaultProperties));
+
+    const newInstance: ComponentInstance = {
+      id: newId,
+      type,
+      label,
+      position: pos,
+      properties
+    };
+
+    const updatedCircuit: Circuit = {
+      ...project.circuit,
+      components: [...project.circuit.components, newInstance]
+    };
+
+    const updatedFiles = syncGeneratedJsonFiles(project.files, updatedCircuit);
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        circuit: updatedCircuit,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      selectedComponentId: newId,
+      saveStatus: 'unsaved'
+    });
+
+    get().addLog('info', `Placed ${label} (${def.name}) on the workbench.`);
+    return newInstance;
+  },
+
+  updateComponentPosition: (id: string, position: { x: number; y: number }) => {
+    const { project } = get();
+    const exists = project.circuit.components.some(c => c.id === id);
+    if (!exists) return;
+
+    const updatedComponents = project.circuit.components.map(c =>
+      c.id === id ? { ...c, position } : c
+    );
+
+    const updatedCircuit: Circuit = {
+      ...project.circuit,
+      components: updatedComponents
+    };
+
+    const updatedFiles = syncGeneratedJsonFiles(project.files, updatedCircuit);
+
+    set({
+      project: {
+        ...project,
+        circuit: updatedCircuit,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      saveStatus: 'unsaved'
+    });
+  },
+
+  updateComponentProperties: (
+    id: string,
+    properties: Record<string, unknown>,
+    newLabel?: string
+  ) => {
+    const { project } = get();
+    const instance = project.circuit.components.find(c => c.id === id);
+    if (!instance) {
+      return { success: false, error: 'Component instance not found.' };
+    }
+
+    const def = getComponentDefinition(instance.type);
+    if (!def) {
+      return { success: false, error: 'Component definition not found in registry.' };
+    }
+
+    // Validate properties against component's Zod schema
+    const parse = def.propertySchema.safeParse(properties);
+    if (!parse.success) {
+      const issueMsg = parse.error.issues.map(i => i.message).join('; ');
+      return { success: false, error: issueMsg };
+    }
+
+    let finalLabel = instance.label;
+    if (newLabel !== undefined) {
+      const trimmedLabel = newLabel.trim();
+      if (!trimmedLabel) {
+        return { success: false, error: 'Component label cannot be empty.' };
+      }
+      // Check label uniqueness among other components
+      const duplicate = project.circuit.components.some(
+        c => c.id !== id && c.label.toLowerCase() === trimmedLabel.toLowerCase()
+      );
+      if (duplicate) {
+        return { success: false, error: `Label "${trimmedLabel}" is already used by another component.` };
+      }
+      finalLabel = trimmedLabel;
+    }
+
+    const updatedComponents = project.circuit.components.map(c =>
+      c.id === id
+        ? {
+            ...c,
+            label: finalLabel,
+            properties: parse.data as Record<string, unknown>
+          }
+        : c
+    );
+
+    const updatedCircuit: Circuit = {
+      ...project.circuit,
+      components: updatedComponents
+    };
+
+    const updatedFiles = syncGeneratedJsonFiles(project.files, updatedCircuit);
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        circuit: updatedCircuit,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      saveStatus: 'unsaved'
+    });
+
+    get().addLog('info', `Updated properties for ${finalLabel}.`);
+    return { success: true };
+  },
+
+  deleteComponent: (id: string) => {
+    const { project, selectedComponentId } = get();
+    const target = project.circuit.components.find(c => c.id === id);
+    if (!target) return;
+
+    const updatedComponents = project.circuit.components.filter(c => c.id !== id);
+    // Also remove any attached wires connected to this component
+    const updatedWires = project.circuit.wires.filter(
+      w => w.endpointA.componentId !== id && w.endpointB.componentId !== id
+    );
+
+    const updatedCircuit: Circuit = {
+      components: updatedComponents,
+      wires: updatedWires
+    };
+
+    const updatedFiles = syncGeneratedJsonFiles(project.files, updatedCircuit);
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        circuit: updatedCircuit,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      selectedComponentId: selectedComponentId === id ? null : selectedComponentId,
+      saveStatus: 'unsaved'
+    });
+
+    get().addLog('warn', `Removed ${target.label} from workbench.`);
+  },
+
+  selectComponent: (id: string | null) => {
+    // Note: Changing selection alone does NOT mark the project unsaved
+    set({ selectedComponentId: id });
+  },
+
+  setPaletteOpen: (open: boolean) => {
+    set({ isPaletteOpen: open });
+  },
+
+  setInspectorOpen: (open: boolean) => {
+    set({ isInspectorOpen: open });
+  },
+
+  clearWorkbench: () => {
+    const { project } = get();
+    const updatedCircuit: Circuit = {
+      components: [],
+      wires: []
+    };
+    const updatedFiles = syncGeneratedJsonFiles(project.files, updatedCircuit);
+
+    set({
+      project: {
+        ...project,
+        revision: project.revision + 1,
+        circuit: updatedCircuit,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      },
+      selectedComponentId: null,
+      saveStatus: 'unsaved'
+    });
+
+    get().addLog('info', 'Cleared all components from the workbench.');
   }
 }));
