@@ -2,9 +2,11 @@
 
 > **CHAKRAVYUH Smart ENTC Learning & Innovation Platform**  
 > **Team:** BUG HUNTERS  
-> **Target Deployment:** Vercel (Zero paid services, session-only in-memory architecture)  
+> **Live Deployment:** [https://protoforge-ai-tau.vercel.app](https://protoforge-ai-tau.vercel.app)  
+> **API Endpoint:** [https://protoforge-ai-tau.vercel.app/api/assistant](https://protoforge-ai-tau.vercel.app/api/assistant)  
+> **Repository:** [https://github.com/shuraim19/CHAKRAVYUH-BUG_HUNTERS-129](https://github.com/shuraim19/CHAKRAVYUH-BUG_HUNTERS-129)  
 
-ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It combines an extensible component registry, interactive electronics canvas, undirected pin-to-pin wiring, electrical netlist validation, and an educational Google Gemini engineering assistant with human-in-the-loop reviewed code proposals.
+ProtoForge AI is a browser-based engineering IDE for electronics, embedded systems, and IoT education. It combines an extensible component registry, interactive electronics canvas, undirected pin-to-pin wiring, electrical netlist validation, a deterministic functional simulation engine (Automatic Street Light experiment), and an educational Google Gemini engineering assistant with human-in-the-loop reviewed code proposals.
 
 ---
 
@@ -179,9 +181,11 @@ Executes TypeScript type checking (`tsc`) across both frontend and backend modul
 
 ---
 
-## Deployment Target: Vercel
+## Deployment: Vercel Production
 
-ProtoForge AI is prepared for zero-cost deployment on Vercel:
-- **Frontend**: Static SPA hosted from `dist/` with client-side routing rewrites (`vercel.json`).
+ProtoForge AI is live in production on Vercel:
+- **Live Application URL**: [https://protoforge-ai-tau.vercel.app](https://protoforge-ai-tau.vercel.app)
+- **Serverless API Status**: [https://protoforge-ai-tau.vercel.app/api/assistant](https://protoforge-ai-tau.vercel.app/api/assistant)
+- **Frontend Architecture**: Static SPA hosted from `dist/` with client-side SPA routing rewrites (`vercel.json`).
 - **Serverless API**: `api/assistant.ts` handles `POST /api/assistant` using the official `@google/genai` Node runtime.
-- **Environment Variables**: Configure `GEMINI_API_KEY` and `GEMINI_MODEL` in the Vercel Project Settings dashboard.
+- **Environment Variables**: Configure `GEMINI_API_KEY` and `GEMINI_MODEL` in the Vercel Project Settings dashboard. If unconfigured, the application gracefully operates in truthful unconfigured mode with the complete electronics lab and simulation 100% operational.

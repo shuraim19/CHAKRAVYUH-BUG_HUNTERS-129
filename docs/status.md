@@ -2,7 +2,9 @@
 
 **Team:** BUG HUNTERS  
 **Challenge:** CHAKRAVYUH Smart ENTC Learning & Innovation Platform  
-**Target Deployment:** Vercel (Zero paid services, in-memory session architecture)  
+**Live Production URL:** [https://protoforge-ai-tau.vercel.app](https://protoforge-ai-tau.vercel.app)  
+**API Endpoint:** [https://protoforge-ai-tau.vercel.app/api/assistant](https://protoforge-ai-tau.vercel.app/api/assistant)  
+**GitHub Repository:** [https://github.com/shuraim19/CHAKRAVYUH-BUG_HUNTERS-129](https://github.com/shuraim19/CHAKRAVYUH-BUG_HUNTERS-129)  
 
 ---
 
